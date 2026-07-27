@@ -1,0 +1,85 @@
+enum AsyncJobType {
+  REPORT_EXPORT
+  NOTIFICATION_SCAN
+}
+
+enum AsyncJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  DEAD
+}
+
+enum NotificationType {
+  LOW_STOCK
+  EXPIRING_BATCH
+  OVERDUE_DEBT
+  JOB_FAILED
+}
+
+model AsyncJob {
+  id                      String         @id @default(uuid()) @db.Uuid
+  tenantId                String         @map("tenant_id") @db.Uuid
+  branchId                String?        @map("branch_id") @db.Uuid
+  type                    AsyncJobType
+  status                  AsyncJobStatus @default(QUEUED)
+  deduplicationKey        String         @map("deduplication_key") @db.VarChar(160)
+  payload                 Json
+  result                  Json?
+  attempts                Int            @default(0)
+  maxAttempts             Int            @default(5) @map("max_attempts")
+  runAt                   DateTime       @default(now()) @map("run_at") @db.Timestamptz(3)
+  lockedAt                DateTime?      @map("locked_at") @db.Timestamptz(3)
+  lockedBy                String?        @map("locked_by") @db.VarChar(120)
+  lastError               String?        @map("last_error") @db.VarChar(2000)
+  requestedByMembershipId String         @map("requested_by_membership_id") @db.Uuid
+  requestedByUserId       String         @map("requested_by_user_id") @db.Uuid
+  createdAt               DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, deduplicationKey])
+  @@index([status, runAt, createdAt])
+  @@index([tenantId, branchId, createdAt])
+  @@map("async_jobs")
+}
+
+model ReportExport {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  branchId  String?  @map("branch_id") @db.Uuid
+  jobId     String   @map("job_id") @db.Uuid
+  filename  String   @db.VarChar(240)
+  mimeType  String   @map("mime_type") @db.VarChar(120)
+  checksum  String   @db.Char(64)
+  content   Bytes
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, jobId])
+  @@index([tenantId, branchId, expiresAt])
+  @@map("report_exports")
+}
+
+model Notification {
+  id                 String           @id @default(uuid()) @db.Uuid
+  tenantId           String           @map("tenant_id") @db.Uuid
+  branchId           String?          @map("branch_id") @db.Uuid
+  type               NotificationType
+  fingerprint        String           @db.VarChar(200)
+  title              String           @db.VarChar(180)
+  message            String           @db.VarChar(500)
+  entityType         String?          @map("entity_type") @db.VarChar(80)
+  entityId           String?          @map("entity_id") @db.VarChar(100)
+  metadata           Json             @default("{}")
+  readAt             DateTime?        @map("read_at") @db.Timestamptz(3)
+  readByMembershipId String?          @map("read_by_membership_id") @db.Uuid
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, fingerprint])
+  @@index([tenantId, branchId, readAt, createdAt])
+  @@map("notifications")
+}

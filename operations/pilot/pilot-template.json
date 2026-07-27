@@ -1,0 +1,29 @@
+{
+  "tenantId": "replace-with-tenant-uuid",
+  "tenantSlug": "replace-with-tenant-slug",
+  "pilotOwner": "replace-with-business-owner",
+  "incidentCommander": "replace-with-incident-commander",
+  "technicalOwner": "replace-with-technical-owner",
+  "startsAt": "YYYY-MM-DDT00:00:00Z",
+  "stabilityWindowDays": 14,
+  "rolloutPhase": "single-pilot",
+  "objectives": {
+    "availabilityPercent": 99.5,
+    "serverErrorPercentMax": 0.5,
+    "interactiveP95Ms": 750,
+    "reportP95Ms": 2000,
+    "jobSuccessPercent": 99,
+    "tenantIsolationIncidents": 0,
+    "financialReconciliationDifference": 0,
+    "backupMaxAgeHours": 24
+  },
+  "admission": {
+    "repositoryGatesPassed": false,
+    "migrationValidated": false,
+    "restoreRehearsed": false,
+    "ownerConfirmed": false,
+    "branchesConfirmed": false,
+    "monitoringAssigned": false,
+    "rollbackAuthorityNamed": false
+  }
+}

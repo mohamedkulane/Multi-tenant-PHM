@@ -1,0 +1,218 @@
+enum StockMovementType {
+  RECEIPT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  SALE
+  RETURN
+  TRANSFER_OUT
+  TRANSFER_IN
+  EXPIRED
+  VOID
+}
+
+enum InventoryTransferStatus {
+  DRAFT
+  COMPLETED
+  CANCELLED
+}
+
+model Product {
+  id                   String   @id @default(uuid()) @db.Uuid
+  tenantId             String   @map("tenant_id") @db.Uuid
+  name                 String   @db.VarChar(180)
+  normalizedName       String   @map("normalized_name") @db.VarChar(180)
+  category             String   @db.VarChar(80)
+  sku                  String?  @db.VarChar(80)
+  barcode              String?  @db.VarChar(120)
+  genericName          String?  @map("generic_name") @db.VarChar(180)
+  brandName            String?  @map("brand_name") @db.VarChar(180)
+  strength             String?  @db.VarChar(80)
+  dosageForm           String?  @map("dosage_form") @db.VarChar(80)
+  manufacturer         String?  @db.VarChar(180)
+  baseUnit             String   @map("base_unit") @db.VarChar(40)
+  requiresPrescription Boolean  @default(false) @map("requires_prescription")
+  active               Boolean  @default(true)
+  version              Int      @default(1)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  packages      ProductPackage[]
+  branchConfigs BranchProduct[]
+  batches       InventoryBatch[]
+  movements     StockMovement[]
+  receiptItems  InventoryReceiptItem[]
+  transferItems InventoryTransferItem[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, normalizedName])
+  @@unique([tenantId, sku])
+  @@unique([tenantId, barcode])
+  @@index([tenantId, category, active])
+  @@map("products")
+}
+
+model ProductPackage {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  productId       String   @map("product_id") @db.Uuid
+  code            String   @db.VarChar(40)
+  label           String   @db.VarChar(80)
+  unitsPerPackage BigInt   @map("units_per_package")
+  salePrice       Decimal? @map("sale_price") @db.Decimal(19, 4)
+  sellable        Boolean  @default(true)
+  sortOrder       Int      @default(0) @map("sort_order")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  product Product @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, productId, code])
+  @@index([tenantId, productId, active])
+  @@map("product_packages")
+}
+
+model BranchProduct {
+  tenantId             String   @map("tenant_id") @db.Uuid
+  branchId             String   @map("branch_id") @db.Uuid
+  productId            String   @map("product_id") @db.Uuid
+  reorderPointBaseUnit BigInt   @default(0) @map("reorder_point_base_units")
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  product Product @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+
+  @@id([tenantId, branchId, productId])
+  @@index([tenantId, productId])
+  @@map("branch_products")
+}
+
+model InventoryBatch {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  branchId       String   @map("branch_id") @db.Uuid
+  productId      String   @map("product_id") @db.Uuid
+  batchNumber    String   @map("batch_number") @db.VarChar(100)
+  expiryDate     DateTime @map("expiry_date") @db.Date
+  receivedAt     DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
+  unitCost       Decimal? @map("unit_cost") @db.Decimal(19, 6)
+  quantityOnHand BigInt   @default(0) @map("quantity_on_hand")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  product                  Product                 @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+  movements                StockMovement[]
+  receiptItems             InventoryReceiptItem[]
+  transferSourceItems      InventoryTransferItem[] @relation("TransferSourceBatch")
+  transferDestinationItems InventoryTransferItem[] @relation("TransferDestinationBatch")
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, branchId, productId, batchNumber, expiryDate])
+  @@index([tenantId, branchId, productId, expiryDate])
+  @@index([tenantId, branchId, expiryDate])
+  @@map("inventory_batches")
+}
+
+model InventoryReceipt {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  branchId          String   @map("branch_id") @db.Uuid
+  supplierName      String?  @map("supplier_name") @db.VarChar(180)
+  referenceNumber   String?  @map("reference_number") @db.VarChar(100)
+  idempotencyKey    String   @map("idempotency_key") @db.VarChar(120)
+  receivedAt        DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
+  actorMembershipId String   @map("actor_membership_id") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  items InventoryReceiptItem[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, branchId, receivedAt])
+  @@map("inventory_receipts")
+}
+
+model InventoryReceiptItem {
+  tenantId  String  @map("tenant_id") @db.Uuid
+  receiptId String  @map("receipt_id") @db.Uuid
+  productId String  @map("product_id") @db.Uuid
+  batchId   String  @map("batch_id") @db.Uuid
+  quantity  BigInt
+  unitCost  Decimal @map("unit_cost") @db.Decimal(19, 6)
+
+  receipt InventoryReceipt @relation(fields: [tenantId, receiptId], references: [tenantId, id], onDelete: Restrict)
+  product Product          @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+  batch   InventoryBatch   @relation(fields: [tenantId, batchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@id([tenantId, receiptId, productId, batchId])
+  @@index([tenantId, batchId])
+  @@map("inventory_receipt_items")
+}
+
+model StockMovement {
+  id                BigInt            @id @default(autoincrement())
+  tenantId          String            @map("tenant_id") @db.Uuid
+  branchId          String            @map("branch_id") @db.Uuid
+  productId         String            @map("product_id") @db.Uuid
+  batchId           String            @map("batch_id") @db.Uuid
+  type              StockMovementType
+  quantityDelta     BigInt            @map("quantity_delta")
+  balanceAfter      BigInt            @map("balance_after")
+  referenceType     String?           @map("reference_type") @db.VarChar(60)
+  referenceId       String?           @map("reference_id") @db.VarChar(100)
+  idempotencyKey    String            @map("idempotency_key") @db.VarChar(120)
+  reason            String?           @db.VarChar(500)
+  actorMembershipId String            @map("actor_membership_id") @db.Uuid
+  actorUserId       String            @map("actor_user_id") @db.Uuid
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  product Product        @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+  batch   InventoryBatch @relation(fields: [tenantId, batchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, branchId, productId, createdAt])
+  @@index([tenantId, batchId, createdAt])
+  @@map("stock_movements")
+}
+
+model InventoryTransfer {
+  id                      String                  @id @default(uuid()) @db.Uuid
+  tenantId                String                  @map("tenant_id") @db.Uuid
+  sourceBranchId          String                  @map("source_branch_id") @db.Uuid
+  destinationBranchId     String                  @map("destination_branch_id") @db.Uuid
+  status                  InventoryTransferStatus @default(DRAFT)
+  idempotencyKey          String                  @map("idempotency_key") @db.VarChar(120)
+  notes                   String?                 @db.VarChar(500)
+  initiatedByMembershipId String                  @map("initiated_by_membership_id") @db.Uuid
+  completedAt             DateTime?               @map("completed_at") @db.Timestamptz(3)
+  createdAt               DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  items InventoryTransferItem[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, sourceBranchId, createdAt])
+  @@index([tenantId, destinationBranchId, createdAt])
+  @@map("inventory_transfers")
+}
+
+model InventoryTransferItem {
+  tenantId           String @map("tenant_id") @db.Uuid
+  transferId         String @map("transfer_id") @db.Uuid
+  productId          String @map("product_id") @db.Uuid
+  sourceBatchId      String @map("source_batch_id") @db.Uuid
+  destinationBatchId String @map("destination_batch_id") @db.Uuid
+  quantity           BigInt
+
+  transfer         InventoryTransfer @relation(fields: [tenantId, transferId], references: [tenantId, id], onDelete: Restrict)
+  product          Product           @relation(fields: [tenantId, productId], references: [tenantId, id], onDelete: Restrict)
+  sourceBatch      InventoryBatch    @relation("TransferSourceBatch", fields: [tenantId, sourceBatchId], references: [tenantId, id], onDelete: Restrict)
+  destinationBatch InventoryBatch    @relation("TransferDestinationBatch", fields: [tenantId, destinationBatchId], references: [tenantId, id], onDelete: Restrict)
+
+  @@id([tenantId, transferId, sourceBatchId])
+  @@index([tenantId, destinationBatchId])
+  @@map("inventory_transfer_items")
+}

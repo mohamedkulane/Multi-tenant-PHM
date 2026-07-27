@@ -1,0 +1,255 @@
+enum SaleStatus {
+  COMPLETED
+  PARTIALLY_RETURNED
+  RETURNED
+  VOIDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  MOBILE_MONEY
+  BANK_TRANSFER
+  OTHER
+}
+
+enum PaymentType {
+  PAYMENT
+  REFUND
+  REVERSAL
+}
+
+enum DebtStatus {
+  OPEN
+  OVERDUE
+  PAID
+  VOIDED
+}
+
+enum ExpenseStatus {
+  POSTED
+  VOIDED
+}
+
+model InvoiceSequence {
+  tenantId     String   @map("tenant_id") @db.Uuid
+  branchId     String   @map("branch_id") @db.Uuid
+  businessDate DateTime @map("business_date") @db.Date
+  lastValue    Int      @default(0) @map("last_value")
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([tenantId, branchId, businessDate])
+  @@map("invoice_sequences")
+}
+
+model Sale {
+  id                   String     @id @default(uuid()) @db.Uuid
+  tenantId             String     @map("tenant_id") @db.Uuid
+  branchId             String     @map("branch_id") @db.Uuid
+  invoiceNumber        String     @map("invoice_number") @db.VarChar(80)
+  businessDate         DateTime   @map("business_date") @db.Date
+  status               SaleStatus @default(COMPLETED)
+  customerName         String     @map("customer_name") @db.VarChar(180)
+  customerPhone        String?    @map("customer_phone") @db.VarChar(40)
+  subtotal             Decimal    @db.Decimal(19, 4)
+  discount             Decimal    @default(0) @db.Decimal(19, 4)
+  taxTotal             Decimal    @default(0) @map("tax_total") @db.Decimal(19, 4)
+  grandTotal           Decimal    @map("grand_total") @db.Decimal(19, 4)
+  amountPaid           Decimal    @default(0) @map("amount_paid") @db.Decimal(19, 4)
+  remainingBalance     Decimal    @default(0) @map("remaining_balance") @db.Decimal(19, 4)
+  returnedTotal        Decimal    @default(0) @map("returned_total") @db.Decimal(19, 4)
+  idempotencyKey       String     @map("idempotency_key") @db.VarChar(120)
+  soldByMembershipId   String     @map("sold_by_membership_id") @db.Uuid
+  soldByUserId         String     @map("sold_by_user_id") @db.Uuid
+  voidedAt             DateTime?  @map("voided_at") @db.Timestamptz(3)
+  voidedByMembershipId String?    @map("voided_by_membership_id") @db.Uuid
+  voidReason           String?    @map("void_reason") @db.VarChar(500)
+  createdAt            DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  items    SaleItem[]
+  payments Payment[]
+  debt     Debt?
+  returns  SaleReturn[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, invoiceNumber])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, branchId, createdAt])
+  @@index([tenantId, customerPhone, createdAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  saleId            String   @map("sale_id") @db.Uuid
+  productId         String   @map("product_id") @db.Uuid
+  productPackageId  String   @map("product_package_id") @db.Uuid
+  productName       String   @map("product_name") @db.VarChar(180)
+  sku               String?  @db.VarChar(80)
+  packageCode       String   @map("package_code") @db.VarChar(40)
+  packageLabel      String   @map("package_label") @db.VarChar(80)
+  unitsPerPackage   BigInt   @map("units_per_package")
+  packageQuantity   Int      @map("package_quantity")
+  baseUnitsSold     BigInt   @map("base_units_sold")
+  baseUnitsReturned BigInt   @default(0) @map("base_units_returned")
+  unitPrice         Decimal  @map("unit_price") @db.Decimal(19, 4)
+  unitCost          Decimal  @default(0) @map("unit_cost") @db.Decimal(19, 6)
+  subtotal          Decimal  @db.Decimal(19, 4)
+  discountAmount    Decimal  @default(0) @map("discount_amount") @db.Decimal(19, 4)
+  taxAmount         Decimal  @default(0) @map("tax_amount") @db.Decimal(19, 4)
+  lineTotal         Decimal  @map("line_total") @db.Decimal(19, 4)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  sale        Sale                 @relation(fields: [tenantId, saleId], references: [tenantId, id], onDelete: Restrict)
+  allocations SaleItemAllocation[]
+  returnItems SaleReturnItem[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, saleId])
+  @@index([tenantId, productId])
+  @@map("sale_items")
+}
+
+model SaleItemAllocation {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  saleItemId        String   @map("sale_item_id") @db.Uuid
+  batchId           String   @map("batch_id") @db.Uuid
+  quantityBaseUnits BigInt   @map("quantity_base_units")
+  unitCost          Decimal  @map("unit_cost") @db.Decimal(19, 6)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  saleItem SaleItem @relation(fields: [tenantId, saleItemId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, saleItemId, batchId])
+  @@index([tenantId, batchId])
+  @@map("sale_item_allocations")
+}
+
+model Payment {
+  id                      String        @id @default(uuid()) @db.Uuid
+  tenantId                String        @map("tenant_id") @db.Uuid
+  branchId                String        @map("branch_id") @db.Uuid
+  saleId                  String        @map("sale_id") @db.Uuid
+  type                    PaymentType   @default(PAYMENT)
+  method                  PaymentMethod
+  amount                  Decimal       @db.Decimal(19, 4)
+  externalReference       String?       @map("external_reference") @db.VarChar(180)
+  idempotencyKey          String        @map("idempotency_key") @db.VarChar(120)
+  relatedPaymentId        String?       @map("related_payment_id") @db.Uuid
+  notes                   String?       @db.VarChar(500)
+  collectedByMembershipId String        @map("collected_by_membership_id") @db.Uuid
+  collectedByUserId       String        @map("collected_by_user_id") @db.Uuid
+  createdAt               DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  sale Sale @relation(fields: [tenantId, saleId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, saleId, createdAt])
+  @@map("payments")
+}
+
+model Debt {
+  id              String     @id @default(uuid()) @db.Uuid
+  tenantId        String     @map("tenant_id") @db.Uuid
+  branchId        String     @map("branch_id") @db.Uuid
+  saleId          String     @map("sale_id") @db.Uuid
+  totalAmount     Decimal    @map("total_amount") @db.Decimal(19, 4)
+  paidAmount      Decimal    @default(0) @map("paid_amount") @db.Decimal(19, 4)
+  remainingAmount Decimal    @map("remaining_amount") @db.Decimal(19, 4)
+  dueDate         DateTime   @map("due_date") @db.Date
+  status          DebtStatus @default(OPEN)
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  sale Sale @relation(fields: [tenantId, saleId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, saleId])
+  @@index([tenantId, branchId, status, dueDate])
+  @@map("debts")
+}
+
+model SaleReturn {
+  id                      String   @id @default(uuid()) @db.Uuid
+  tenantId                String   @map("tenant_id") @db.Uuid
+  branchId                String   @map("branch_id") @db.Uuid
+  saleId                  String   @map("sale_id") @db.Uuid
+  idempotencyKey          String   @map("idempotency_key") @db.VarChar(120)
+  reason                  String   @db.VarChar(500)
+  refundAmount            Decimal  @default(0) @map("refund_amount") @db.Decimal(19, 4)
+  processedByMembershipId String   @map("processed_by_membership_id") @db.Uuid
+  processedByUserId       String   @map("processed_by_user_id") @db.Uuid
+  createdAt               DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  sale  Sale             @relation(fields: [tenantId, saleId], references: [tenantId, id], onDelete: Restrict)
+  items SaleReturnItem[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, saleId, createdAt])
+  @@map("sale_returns")
+}
+
+model SaleReturnItem {
+  tenantId          String  @map("tenant_id") @db.Uuid
+  returnId          String  @map("return_id") @db.Uuid
+  saleItemId        String  @map("sale_item_id") @db.Uuid
+  quantityBaseUnits BigInt  @map("quantity_base_units")
+  refundAmount      Decimal @map("refund_amount") @db.Decimal(19, 4)
+
+  saleReturn SaleReturn @relation(fields: [tenantId, returnId], references: [tenantId, id], onDelete: Restrict)
+  saleItem   SaleItem   @relation(fields: [tenantId, saleItemId], references: [tenantId, id], onDelete: Restrict)
+
+  @@id([tenantId, returnId, saleItemId])
+  @@index([tenantId, saleItemId])
+  @@map("sale_return_items")
+}
+
+model ExpenseCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String   @db.VarChar(120)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  expenses Expense[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@index([tenantId, active])
+  @@map("expense_categories")
+}
+
+model Expense {
+  id                    String        @id @default(uuid()) @db.Uuid
+  tenantId              String        @map("tenant_id") @db.Uuid
+  branchId              String        @map("branch_id") @db.Uuid
+  categoryId            String        @map("category_id") @db.Uuid
+  title                 String        @db.VarChar(180)
+  amount                Decimal       @db.Decimal(19, 4)
+  expenseDate           DateTime      @map("expense_date") @db.Date
+  note                  String?       @db.VarChar(1000)
+  status                ExpenseStatus @default(POSTED)
+  idempotencyKey        String        @map("idempotency_key") @db.VarChar(120)
+  createdByMembershipId String        @map("created_by_membership_id") @db.Uuid
+  createdByUserId       String        @map("created_by_user_id") @db.Uuid
+  voidedAt              DateTime?     @map("voided_at") @db.Timestamptz(3)
+  voidedByMembershipId  String?       @map("voided_by_membership_id") @db.Uuid
+  voidReason            String?       @map("void_reason") @db.VarChar(500)
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  category ExpenseCategory @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, branchId, expenseDate])
+  @@index([tenantId, categoryId, expenseDate])
+  @@map("expenses")
+}

@@ -1,0 +1,129 @@
+enum SupportRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVOKED
+  EXPIRED
+}
+
+model PlatformLoginDirectory {
+  userId    String   @id @map("user_id") @db.Uuid
+  email     String   @unique @db.VarChar(320)
+  active    Boolean  @default(true)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("platform_login_directory")
+}
+
+model PlatformSession {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash") @db.Char(64)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  lastSeenAt DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  ipAddress  String?   @map("ip_address") @db.VarChar(64)
+  userAgent  String?   @map("user_agent") @db.VarChar(512)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([userId, id])
+  @@index([userId, expiresAt])
+  @@map("platform_sessions")
+}
+
+model PlatformAuditLog {
+  id             BigInt   @id @default(autoincrement())
+  actorUserId    String   @map("actor_user_id") @db.Uuid
+  action         String   @db.VarChar(100)
+  entityType     String   @map("entity_type") @db.VarChar(100)
+  entityId       String?  @map("entity_id") @db.VarChar(100)
+  targetTenantId String?  @map("target_tenant_id") @db.Uuid
+  before         Json?
+  after          Json?
+  metadata       Json     @default("{}")
+  ipAddress      String?  @map("ip_address") @db.VarChar(64)
+  userAgent      String?  @map("user_agent") @db.VarChar(512)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([actorUserId, createdAt])
+  @@index([targetTenantId, createdAt])
+  @@map("platform_audit_logs")
+}
+
+model Plan {
+  code        String   @id @db.VarChar(50)
+  name        String   @db.VarChar(100)
+  description String?  @db.VarChar(500)
+  limits      Json
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("plans")
+}
+
+model TenantSubscription {
+  tenantId  String    @id @map("tenant_id") @db.Uuid
+  planCode  String    @map("plan_code") @db.VarChar(50)
+  startsAt  DateTime  @default(now()) @map("starts_at") @db.Timestamptz(3)
+  endsAt    DateTime? @map("ends_at") @db.Timestamptz(3)
+  overrides Json      @default("{}")
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([planCode])
+  @@map("tenant_subscriptions")
+}
+
+model TenantBranding {
+  tenantId       String   @id @map("tenant_id") @db.Uuid
+  displayName    String   @map("display_name") @db.VarChar(150)
+  logoUrl        String?  @map("logo_url") @db.VarChar(1000)
+  primaryColor   String   @default("#174C3F") @map("primary_color") @db.Char(7)
+  accentColor    String   @default("#B8F39A") @map("accent_color") @db.Char(7)
+  invoiceFooter  String?  @map("invoice_footer") @db.VarChar(500)
+  supportContact String?  @map("support_contact") @db.VarChar(180)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("tenant_branding")
+}
+
+model SupportAccessRequest {
+  id                String               @id @default(uuid()) @db.Uuid
+  targetTenantId    String               @map("target_tenant_id") @db.Uuid
+  requestedByUserId String               @map("requested_by_user_id") @db.Uuid
+  reason            String               @db.VarChar(1000)
+  status            SupportRequestStatus @default(PENDING)
+  approvedByUserId  String?              @map("approved_by_user_id") @db.Uuid
+  approvedAt        DateTime?            @map("approved_at") @db.Timestamptz(3)
+  expiresAt         DateTime?            @map("expires_at") @db.Timestamptz(3)
+  rejectedAt        DateTime?            @map("rejected_at") @db.Timestamptz(3)
+  revokedAt         DateTime?            @map("revoked_at") @db.Timestamptz(3)
+  decisionReason    String?              @map("decision_reason") @db.VarChar(1000)
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  sessions SupportSession[]
+
+  @@index([requestedByUserId, status, createdAt])
+  @@index([targetTenantId, status, createdAt])
+  @@map("support_access_requests")
+}
+
+model SupportSession {
+  id             String    @id @default(uuid()) @db.Uuid
+  requestId      String    @unique @map("request_id") @db.Uuid
+  platformUserId String    @map("platform_user_id") @db.Uuid
+  targetTenantId String    @map("target_tenant_id") @db.Uuid
+  tokenHash      String    @unique @map("token_hash") @db.Char(64)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt      DateTime? @map("revoked_at") @db.Timestamptz(3)
+  lastSeenAt     DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  request SupportAccessRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+
+  @@unique([platformUserId, id])
+  @@index([targetTenantId, expiresAt])
+  @@map("support_sessions")
+}
+

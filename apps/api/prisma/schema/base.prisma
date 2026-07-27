@@ -1,0 +1,265 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REVOKED
+}
+
+enum TenantRole {
+  OWNER
+  ADMIN
+  MANAGER
+  PHARMACIST
+  CASHIER
+  AUDITOR
+}
+
+enum PlatformRole {
+  SUPER_ADMIN
+  SUPPORT
+  AUDITOR
+}
+
+model PlatformSetting {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique @db.VarChar(100)
+  value     Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("platform_settings")
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String?    @unique @db.VarChar(320)
+  fullName     String     @map("full_name") @db.VarChar(150)
+  passwordHash String     @map("password_hash") @db.VarChar(255)
+  status       UserStatus @default(ACTIVE)
+  tokenVersion Int        @default(0) @map("token_version")
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  platformAccess PlatformUser?
+  memberships    TenantMembership[]
+  sessions       Session[]
+
+  @@map("users")
+}
+
+model PlatformUser {
+  userId    String       @id @map("user_id") @db.Uuid
+  role      PlatformRole
+  active    Boolean      @default(true)
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("platform_users")
+}
+
+model Tenant {
+  id           String       @id @default(uuid()) @db.Uuid
+  name         String       @db.VarChar(150)
+  slug         String       @unique @db.VarChar(80)
+  status       TenantStatus @default(TRIAL)
+  planCode     String       @default("starter") @map("plan_code") @db.VarChar(50)
+  timezone     String       @default("UTC") @db.VarChar(64)
+  currencyCode String       @default("USD") @map("currency_code") @db.Char(3)
+  settings     Json         @default("{}")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  loginDirectory TenantLoginDirectory?
+  branches       Branch[]
+  memberships    TenantMembership[]
+  sessions       Session[]
+  invitations    Invitation[]
+  auditLogs      AuditLog[]
+
+  @@map("tenants")
+}
+
+/// Minimal non-sensitive lookup used only before app.tenant_id can be set.
+model TenantLoginDirectory {
+  tenantId  String       @id @map("tenant_id") @db.Uuid
+  slug      String       @unique @db.VarChar(80)
+  status    TenantStatus
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_login_directory")
+}
+
+model Branch {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String   @db.VarChar(150)
+  code      String   @db.VarChar(40)
+  active    Boolean  @default(true)
+  timezone  String   @default("UTC") @db.VarChar(64)
+  phone     String?  @db.VarChar(40)
+  address   Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant                Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  membershipAssignments MembershipBranch[]
+  invitationAssignments InvitationBranch[]
+  auditLogs             AuditLog[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, id])
+  @@index([tenantId, active])
+  @@map("branches")
+}
+
+model TenantMembership {
+  id          String           @id @default(uuid()) @db.Uuid
+  tenantId    String           @map("tenant_id") @db.Uuid
+  userId      String           @map("user_id") @db.Uuid
+  username    String           @db.VarChar(80)
+  role        TenantRole
+  status      MembershipStatus @default(INVITED)
+  allBranches Boolean          @default(false) @map("all_branches")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  branches    MembershipBranch[]
+  sessions    Session[]
+  invitations Invitation[]       @relation("InvitationInviter")
+  auditLogs   AuditLog[]
+
+  @@unique([tenantId, username])
+  @@unique([tenantId, userId])
+  @@unique([tenantId, id])
+  @@index([userId])
+  @@index([tenantId, status])
+  @@map("tenant_memberships")
+}
+
+model MembershipBranch {
+  tenantId     String   @map("tenant_id") @db.Uuid
+  membershipId String   @map("membership_id") @db.Uuid
+  branchId     String   @map("branch_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  membership TenantMembership @relation(fields: [tenantId, membershipId], references: [tenantId, id], onDelete: Cascade)
+  branch     Branch           @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([tenantId, membershipId, branchId])
+  @@index([tenantId, branchId])
+  @@map("membership_branches")
+}
+
+model Session {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  membershipId String    @map("membership_id") @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  tokenHash    String    @unique @map("token_hash") @db.Char(64)
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz(3)
+  lastSeenAt   DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  revokedAt    DateTime? @map("revoked_at") @db.Timestamptz(3)
+  ipAddress    String?   @map("ip_address") @db.VarChar(64)
+  userAgent    String?   @map("user_agent") @db.VarChar(512)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  membership TenantMembership @relation(fields: [tenantId, membershipId], references: [tenantId, id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, membershipId, expiresAt])
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Invitation {
+  id                    String     @id @default(uuid()) @db.Uuid
+  tenantId              String     @map("tenant_id") @db.Uuid
+  email                 String?    @db.VarChar(320)
+  username              String     @db.VarChar(80)
+  role                  TenantRole
+  allBranches           Boolean    @default(false) @map("all_branches")
+  tokenHash             String     @unique @map("token_hash") @db.Char(64)
+  expiresAt             DateTime   @map("expires_at") @db.Timestamptz(3)
+  acceptedAt            DateTime?  @map("accepted_at") @db.Timestamptz(3)
+  revokedAt             DateTime?  @map("revoked_at") @db.Timestamptz(3)
+  invitedByMembershipId String     @map("invited_by_membership_id") @db.Uuid
+  createdAt             DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedBy TenantMembership   @relation("InvitationInviter", fields: [tenantId, invitedByMembershipId], references: [tenantId, id], onDelete: Restrict)
+  branches  InvitationBranch[]
+
+  @@unique([tenantId, username])
+  @@unique([tenantId, id])
+  @@index([tenantId, expiresAt])
+  @@map("invitations")
+}
+
+model InvitationBranch {
+  tenantId     String   @map("tenant_id") @db.Uuid
+  invitationId String   @map("invitation_id") @db.Uuid
+  branchId     String   @map("branch_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  invitation Invitation @relation(fields: [tenantId, invitationId], references: [tenantId, id], onDelete: Cascade)
+  branch     Branch     @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Cascade)
+
+  @@id([tenantId, invitationId, branchId])
+  @@index([tenantId, branchId])
+  @@map("invitation_branches")
+}
+
+model AuditLog {
+  id                BigInt   @id @default(autoincrement())
+  tenantId          String   @map("tenant_id") @db.Uuid
+  branchId          String?  @map("branch_id") @db.Uuid
+  actorUserId       String?  @map("actor_user_id") @db.Uuid
+  actorMembershipId String?  @map("actor_membership_id") @db.Uuid
+  requestId         String?  @map("request_id") @db.VarChar(128)
+  action            String   @db.VarChar(100)
+  entityType        String   @map("entity_type") @db.VarChar(100)
+  entityId          String?  @map("entity_id") @db.VarChar(100)
+  before            Json?
+  after             Json?
+  metadata          Json     @default("{}")
+  ipAddress         String?  @map("ip_address") @db.VarChar(64)
+  userAgent         String?  @map("user_agent") @db.VarChar(512)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  branch          Branch?           @relation(fields: [tenantId, branchId], references: [tenantId, id], onDelete: Restrict)
+  actorMembership TenantMembership? @relation(fields: [tenantId, actorMembershipId], references: [tenantId, id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId])
+  @@map("audit_logs")
+}
