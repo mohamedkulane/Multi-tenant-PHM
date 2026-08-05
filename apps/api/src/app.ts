@@ -1,6 +1,10 @@
 import cors from "cors";
 import express, { type Request, type Response } from "express";
-import helmet from "helmet";
+import * as helmetModule from "helmet";
+const helmet = (
+  "default" in helmetModule ? helmetModule.default : helmetModule
+) as typeof import("helmet").default;
+
 import { pinoHttp } from "pino-http";
 import { combinedAuthService } from "./auth/combined-auth.service.js";
 import type { AuthService } from "./auth/auth.types.js";
