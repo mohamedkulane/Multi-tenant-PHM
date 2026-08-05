@@ -1,7 +1,7 @@
 import cors from "cors";
-import express from "express";
+import express, { type Request, type Response } from "express";
 import helmet from "helmet";
-import pinoHttp from "pino-http";
+import { pinoHttp } from "pino-http";
 import { combinedAuthService } from "./auth/combined-auth.service.js";
 import type { AuthService } from "./auth/auth.types.js";
 import { platformAuthService } from "./platform/platform-auth.service.js";
@@ -98,9 +98,12 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use(
     pinoHttp({
       logger,
-      customProps: (_request, response) => {
+      customProps: (_request: Request, response: Response) => {
         const locals = response.locals as ResponseLocals;
-        return { requestId: locals.requestId };
+
+        return {
+          requestId: locals.requestId,
+        };
       },
       redact: {
         paths: [
