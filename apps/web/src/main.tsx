@@ -2,6 +2,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Application } from "./application";
+import { ToastViewport } from "./components/toast";
 import { queryClient } from "./query-client";
 import "./styles.css";
 
@@ -14,6 +15,7 @@ if (!root) {
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
+      <ToastViewport />
       <Application />
     </QueryClientProvider>
   </StrictMode>,

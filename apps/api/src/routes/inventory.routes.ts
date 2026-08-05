@@ -23,6 +23,7 @@ const decimal = z
 const receiveSchema = z.object({
   branchId: uuid,
   supplierName: z.string().trim().max(180).optional(),
+  supplierId: uuid.optional(),
   referenceNumber: z.string().trim().max(100).optional(),
   idempotencyKey,
   receivedAt: z.coerce.date().optional(),

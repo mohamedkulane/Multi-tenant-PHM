@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+﻿import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AuthenticatedPrincipal } from "../src/auth/auth.types.js";
@@ -277,6 +277,36 @@ describeDatabase("M4 live finance workflows", () => {
     });
   });
 
+  it("reserves shared batch stock across different packages of the same product", async () => {
+    const sale = (await salesService.checkout(principal, {
+      branchId,
+      customerName: "Package Mix Customer",
+      discount: "0",
+      amountPaid: "0",
+      idempotencyKey: `checkout:${randomUUID()}`,
+      lines: [
+        { productId, packageCode: "box", packageQuantity: 1 },
+        { productId, packageCode: "piece", packageQuantity: 2 },
+      ],
+    })) as unknown as { id: string; items: unknown[] };
+
+    expect(sale.items).toHaveLength(2);
+    const stockAfterSale = (await inventoryService.listStock(principal, branchId)) as Array<{
+      quantityOnHand: string;
+    }>;
+    expect(stockAfterSale[0]!.quantityOnHand).toBe("88");
+
+    await salesService.voidSale(principal, {
+      branchId,
+      saleId: sale.id,
+      reason: "Multi-package allocation test cleanup",
+      idempotencyKey: `void:${randomUUID()}`,
+    });
+    const stockAfterVoid = (await inventoryService.listStock(principal, branchId)) as Array<{
+      quantityOnHand: string;
+    }>;
+    expect(stockAfterVoid[0]!.quantityOnHand).toBe("100");
+  });
   it("posts and voids an expense without deleting financial evidence", async () => {
     const category = (await expenseService.createCategory(principal, "Utilities")) as {
       id: string;

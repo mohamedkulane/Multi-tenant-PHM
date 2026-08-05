@@ -1,0 +1,179 @@
+enum LabVisitStatus {
+  REGISTERED
+  RESULTS_PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum LabResultStatus {
+  PENDING
+  NEGATIVE
+  POSITIVE
+  INCONCLUSIVE
+}
+
+model Customer {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String   @db.VarChar(180)
+  phone     String   @db.VarChar(40)
+  address   String?  @db.VarChar(300)
+  notes     String?  @db.VarChar(1000)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  sales Sale[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, phone])
+  @@index([tenantId, name, active])
+  @@map("customers")
+}
+
+model Supplier {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  name          String   @db.VarChar(180)
+  contactPerson String?  @map("contact_person") @db.VarChar(180)
+  phone         String?  @db.VarChar(40)
+  email         String?  @db.VarChar(320)
+  address       String?  @db.VarChar(500)
+  notes         String?  @db.VarChar(1000)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  receipts InventoryReceipt[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@index([tenantId, active, name])
+  @@map("suppliers")
+}
+
+model LabCategory {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String   @db.VarChar(150)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  tests LabTest[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, name])
+  @@index([tenantId, active])
+  @@map("lab_categories")
+}
+
+model LabTest {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  categoryId String   @map("category_id") @db.Uuid
+  name       String   @db.VarChar(180)
+  price      Decimal  @db.Decimal(19, 4)
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  category   LabCategory    @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
+  visitTests LabVisitTest[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, categoryId, name])
+  @@index([tenantId, active, name])
+  @@map("lab_tests")
+}
+
+model Patient {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String   @db.VarChar(180)
+  age       Int
+  sex       String?  @db.VarChar(20)
+  phone     String?  @db.VarChar(40)
+  notes     String?  @db.VarChar(1000)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  visits LabVisit[]
+
+  @@unique([tenantId, id])
+  @@index([tenantId, name, phone])
+  @@map("patients")
+}
+
+model LabVisit {
+  id                       String         @id @default(uuid()) @db.Uuid
+  tenantId                 String         @map("tenant_id") @db.Uuid
+  branchId                 String         @map("branch_id") @db.Uuid
+  patientId                String         @map("patient_id") @db.Uuid
+  visitNumber              String         @map("visit_number") @db.VarChar(80)
+  status                   LabVisitStatus @default(REGISTERED)
+  clinicalNotes            String?        @map("clinical_notes") @db.VarChar(2000)
+  subtotal                 Decimal        @db.Decimal(19, 4)
+  discount                 Decimal        @default(0) @db.Decimal(19, 4)
+  total                    Decimal        @db.Decimal(19, 4)
+  amountPaid               Decimal        @default(0) @map("amount_paid") @db.Decimal(19, 4)
+  paymentMethod            PaymentMethod? @map("payment_method")
+  registeredByMembershipId String         @map("registered_by_membership_id") @db.Uuid
+  completedAt              DateTime?      @map("completed_at") @db.Timestamptz(3)
+  createdAt                DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  patient      Patient        @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  tests        LabVisitTest[]
+  payments     LabPayment[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, visitNumber])
+  @@index([tenantId, branchId, createdAt])
+  @@index([tenantId, patientId, createdAt])
+  @@map("lab_visits")
+}
+
+model LabPayment {
+  id                      String        @id @default(uuid()) @db.Uuid
+  tenantId                String        @map("tenant_id") @db.Uuid
+  branchId                String        @map("branch_id") @db.Uuid
+  visitId                 String        @map("visit_id") @db.Uuid
+  amount                  Decimal       @db.Decimal(19, 4)
+  method                  PaymentMethod
+  externalReference       String?       @map("external_reference") @db.VarChar(180)
+  notes                   String?       @db.VarChar(500)
+  idempotencyKey          String        @map("idempotency_key") @db.VarChar(120)
+  collectedByMembershipId String        @map("collected_by_membership_id") @db.Uuid
+  collectedByUserId       String        @map("collected_by_user_id") @db.Uuid
+  createdAt               DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  visit LabVisit @relation(fields: [tenantId, visitId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, visitId, createdAt])
+  @@map("lab_payments")
+}
+
+model LabVisitTest {
+  id                   String          @id @default(uuid()) @db.Uuid
+  tenantId             String          @map("tenant_id") @db.Uuid
+  visitId              String          @map("visit_id") @db.Uuid
+  labTestId            String          @map("lab_test_id") @db.Uuid
+  testName             String          @map("test_name") @db.VarChar(180)
+  categoryName         String          @map("category_name") @db.VarChar(150)
+  price                Decimal         @db.Decimal(19, 4)
+  resultStatus         LabResultStatus @default(PENDING) @map("result_status")
+  resultNote           String?         @map("result_note") @db.VarChar(1000)
+  markedAt             DateTime?       @map("marked_at") @db.Timestamptz(3)
+  markedByMembershipId String?         @map("marked_by_membership_id") @db.Uuid
+
+  visit   LabVisit @relation(fields: [tenantId, visitId], references: [tenantId, id], onDelete: Restrict)
+  labTest LabTest  @relation(fields: [tenantId, labTestId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, visitId, labTestId])
+  @@index([tenantId, visitId])
+  @@map("lab_visit_tests")
+}

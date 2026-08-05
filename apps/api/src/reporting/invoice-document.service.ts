@@ -40,7 +40,7 @@ export class PrismaInvoiceDocumentService implements InvoiceDocumentService {
             message: "Sale not found",
           });
         }
-        const [tenant, branch] = await Promise.all([
+        const [tenant, branch, branding] = await Promise.all([
           transaction.tenant.findUnique({
             where: { id: principal.tenantId },
             select: { name: true, currencyCode: true },
@@ -51,13 +51,16 @@ export class PrismaInvoiceDocumentService implements InvoiceDocumentService {
             },
             select: { name: true, code: true, phone: true },
           }),
+          transaction.tenantBranding.findUnique({
+            where: { tenantId: principal.tenantId },
+          }),
         ]);
         const lines = [
-          tenant?.name ?? principal.tenantName,
+          branding?.displayName ?? tenant?.name ?? principal.tenantName,
           `Branch: ${branch?.name ?? sale.branchId} (${branch?.code ?? "-"})`,
           branch?.phone ? `Phone: ${branch.phone}` : "",
           "",
-          `INVOICE ${sale.invoiceNumber}`,
+          `${branding?.invoiceTitle ?? "SALES INVOICE"} ${sale.invoiceNumber}`,
           `Date: ${sale.businessDate.toISOString().slice(0, 10)}  Status: ${sale.status}`,
           `Customer: ${sale.customerName}`,
           `Phone: ${sale.customerPhone ?? "-"}`,
@@ -86,11 +89,17 @@ export class PrismaInvoiceDocumentService implements InvoiceDocumentService {
           ),
           "",
           `Trace ID: ${sale.id}`,
+          branding?.invoiceFooter ?? "",
           "Generated from immutable PHMS transaction snapshots.",
         ].filter((line) => line !== "");
         return {
           filename: `${sale.invoiceNumber}.pdf`,
-          content: buildTextPdf(lines),
+          content: buildTextPdf(lines, {
+            paperSize:
+              branding?.invoicePaperSize === "A5" || branding?.invoicePaperSize === "THERMAL_80MM"
+                ? branding.invoicePaperSize
+                : "A4",
+          }),
         };
       },
     );

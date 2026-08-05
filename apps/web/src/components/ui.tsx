@@ -1,5 +1,5 @@
-﻿import { AlertTriangle, CheckCircle2, LoaderCircle, Search, X } from "lucide-react";
-import type { ReactNode } from "react";
+import { AlertTriangle, CheckCircle2, LoaderCircle, Search, X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { errorMessage } from "../api/client";
 
 function scalarText(value: unknown) {
@@ -8,7 +8,7 @@ function scalarText(value: unknown) {
     typeof value === "boolean" ||
     typeof value === "bigint"
     ? String(value)
-    : "—";
+    : "...";
 }
 
 export function PageHeader({
@@ -58,7 +58,7 @@ export function Dialog({
   if (!open) return null;
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/45 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-hidden bg-slate-950/45 p-2 backdrop-blur-sm sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -67,9 +67,9 @@ export function Dialog({
       }}
     >
       <section
-        className={`my-8 w-full ${wide ? "max-w-4xl" : "max-w-xl"} overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl`}
+        className={`dialog-panel flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] ${wide ? "max-w-4xl" : "max-w-xl"}`}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+        <header className="z-10 flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 bg-white px-4 py-3 sm:px-5 sm:py-4">
           <div>
             <h2 className="text-lg font-bold text-slate-950">{title}</h2>
             {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
@@ -78,7 +78,9 @@ export function Dialog({
             <X size={18} />
           </button>
         </header>
-        {children}
+        <div className="dialog-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {children}
+        </div>
       </section>
     </div>
   );
@@ -236,6 +238,7 @@ export function SimpleTable({
   columns,
   rows,
   rowKey,
+  pageSize = 10,
 }: {
   columns: Array<{
     label: string;
@@ -243,38 +246,92 @@ export function SimpleTable({
   }>;
   rows: Array<Record<string, unknown>>;
   rowKey?: (row: Record<string, unknown>, index: number) => string;
+  pageSize?: number | false;
 }) {
+  const [page, setPage] = useState(1);
+  const size = pageSize === false ? Math.max(1, rows.length) : Math.max(1, pageSize);
+  const pageCount = Math.max(1, Math.ceil(rows.length / size));
+  useEffect(() => {
+    setPage((current) => Math.min(current, pageCount));
+  }, [pageCount]);
   if (!rows.length) return <EmptyState />;
+  const start = (page - 1) * size;
+  const visibleRows = rows.slice(start, start + size);
+  const pageNumbers = Array.from({ length: pageCount }, (_, index) => index + 1).filter(
+    (number) => number === 1 || number === pageCount || Math.abs(number - page) <= 1,
+  );
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[680px]">
-        <thead>
-          <tr className="border-b border-slate-200 bg-slate-50/80">
-            {columns.map((column) => (
-              <th
-                key={column.label}
-                className="px-4 py-3 text-left text-xs font-bold tracking-wide text-slate-500 uppercase"
-              >
-                {column.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr
-              key={rowKey?.(row, index) ?? scalarText(row["id"] ?? index)}
-              className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70"
-            >
+    <div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[680px]">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-50/80">
               {columns.map((column) => (
-                <td key={column.label} className="px-4 py-3.5 text-sm text-slate-700">
-                  {column.render(row)}
-                </td>
+                <th
+                  key={column.label}
+                  className="px-4 py-3 text-left text-xs font-bold tracking-wide text-slate-500 uppercase"
+                >
+                  {column.label}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {visibleRows.map((row, index) => (
+              <tr
+                key={rowKey?.(row, start + index) ?? scalarText(row["id"] ?? start + index)}
+                className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70"
+              >
+                {columns.map((column) => (
+                  <td key={column.label} className="px-4 py-3.5 text-sm text-slate-700">
+                    {column.render(row)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {pageCount > 1 ? (
+        <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-slate-600">
+            Showing {start + 1} to {Math.min(start + size, rows.length)} of {rows.length} entries
+          </p>
+          <nav className="flex flex-wrap items-center" aria-label="Table pagination">
+            <button
+              className="pagination-button rounded-l-lg"
+              disabled={page === 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              Previous
+            </button>
+            {pageNumbers.map((number, index) => {
+              const previous = pageNumbers[index - 1];
+              return (
+                <span key={number} className="contents">
+                  {previous && number - previous > 1 ? (
+                    <span className="pagination-button cursor-default">...</span>
+                  ) : null}
+                  <button
+                    className={`pagination-button ${number === page ? "is-active" : ""}`}
+                    aria-current={number === page ? "page" : undefined}
+                    onClick={() => setPage(number)}
+                  >
+                    {number}
+                  </button>
+                </span>
+              );
+            })}
+            <button
+              className="pagination-button rounded-r-lg"
+              disabled={page === pageCount}
+              onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+            >
+              Next
+            </button>
+          </nav>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -289,7 +346,7 @@ export function money(value: unknown, currency = "USD") {
 }
 
 export function date(value: unknown) {
-  if (!value) return "—";
+  if (!value) return "...";
   const parsed = new Date(scalarText(value));
   return Number.isNaN(parsed.getTime())
     ? scalarText(value)

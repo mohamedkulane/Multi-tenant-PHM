@@ -2,6 +2,7 @@ import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
 import { z } from "zod";
 import { env } from "../config/env.js";
+import { AppError } from "../errors/app-error.js";
 import {
   platformCookieName,
   readPlatformCookie,
@@ -43,6 +44,13 @@ export function createPlatformAuthRouter(service: PlatformAuthService) {
         ? { userAgent: request.header("user-agent")!.slice(0, 512) }
         : {}),
     });
+    if (!["SUPER_ADMIN", "ADMIN"].includes(result.principal.role)) {
+      throw new AppError({
+        statusCode: 401,
+        code: "INVALID_PLATFORM_CREDENTIALS",
+        message: "Invalid platform credentials",
+      });
+    }
     response.cookie(platformCookieName, result.sessionToken, cookieOptions(result.expiresAt));
     response.json({ data: result.principal });
   });

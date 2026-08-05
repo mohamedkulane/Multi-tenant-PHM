@@ -7,8 +7,17 @@ function pdfText(value: string) {
     .replaceAll(")", "\\)");
 }
 
-export function buildTextPdf(lines: string[]) {
-  const pageLines = 44;
+export function buildTextPdf(
+  lines: string[],
+  options: { paperSize?: "A4" | "A5" | "THERMAL_80MM" } = {},
+) {
+  const dimensions = {
+    A4: { width: 612, height: 842, startX: 48, startY: 790, lines: 44 },
+    A5: { width: 420, height: 595, startX: 36, startY: 555, lines: 30 },
+    THERMAL_80MM: { width: 227, height: 842, startX: 14, startY: 810, lines: 50 },
+  } as const;
+  const layout = dimensions[options.paperSize ?? "A4"];
+  const pageLines = layout.lines;
   const pages = Array.from(
     { length: Math.max(1, Math.ceil(lines.length / pageLines)) },
     (_, index) => lines.slice(index * pageLines, (index + 1) * pageLines),
@@ -27,7 +36,7 @@ export function buildTextPdf(lines: string[]) {
     const commands = [
       "BT",
       "/F1 10 Tf",
-      "48 790 Td",
+      `${layout.startX} ${layout.startY} Td`,
       ...page.flatMap((line, lineIndex) => [
         `(${pdfText(line)}) Tj`,
         ...(lineIndex < page.length - 1 ? ["0 -16 Td"] : []),
@@ -35,7 +44,7 @@ export function buildTextPdf(lines: string[]) {
       "ET",
     ].join("\n");
     objects[pageId - 1] =
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] ` +
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${layout.width} ${layout.height}] ` +
       `/Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`;
     objects[contentId - 1] =
       `<< /Length ${Buffer.byteLength(commands, "ascii")} >>\nstream\n${commands}\nendstream`;

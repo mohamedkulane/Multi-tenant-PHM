@@ -1,4 +1,4 @@
-﻿import cors from "cors";
+import cors from "cors";
 import express from "express";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
@@ -16,6 +16,9 @@ import {
 } from "./platform/support-access.service.js";
 import { env } from "./config/env.js";
 import { checkDatabaseReadiness } from "./database/readiness.js";
+import { customerService, type CustomerService } from "./crm/customer.service.js";
+import { labService, type LabService } from "./lab/lab.service.js";
+import { supplierService, type SupplierService } from "./partners/supplier.service.js";
 import { debtService, type DebtService } from "./finance/debt.service.js";
 import { expenseService, type ExpenseService } from "./finance/expense.service.js";
 import { salesService, type SalesService } from "./finance/sales.service.js";
@@ -37,6 +40,9 @@ import {
   type TenantWorkspaceService,
 } from "./tenant/tenant-workspace.service.js";
 import { createAuthRouter } from "./routes/auth.routes.js";
+import { createCustomerRouter } from "./routes/customer.routes.js";
+import { createLabRouter } from "./routes/lab.routes.js";
+import { createSupplierRouter } from "./routes/supplier.routes.js";
 import { createPlatformAuthRouter } from "./routes/platform-auth.routes.js";
 import { createPlatformAdminRouter } from "./routes/platform-admin.routes.js";
 import { createDebtRouter } from "./routes/debt.routes.js";
@@ -58,6 +64,9 @@ export interface CreateAppOptions {
   supportAccess?: SupportAccessService;
   catalog?: CatalogService;
   inventory?: InventoryService;
+  customers?: CustomerService;
+  suppliers?: SupplierService;
+  laboratory?: LabService;
   sales?: SalesService;
   expenses?: ExpenseService;
   debts?: DebtService;
@@ -79,6 +88,9 @@ export function createApp(options: CreateAppOptions = {}) {
   const platformAuthentication = options.platformAuthentication ?? platformAuthService;
 
   app.disable("x-powered-by");
+  app.set("json replacer", (_key: string, value: unknown) =>
+    typeof value === "bigint" ? value.toString() : value,
+  );
   if (env.TRUST_PROXY_HOPS > 0) {
     app.set("trust proxy", env.TRUST_PROXY_HOPS);
   }
@@ -152,6 +164,15 @@ export function createApp(options: CreateAppOptions = {}) {
     createInventoryRouter(authentication, options.inventory ?? inventoryService),
   );
 
+  app.use(
+    "/api/v1/customers",
+    createCustomerRouter(authentication, options.customers ?? customerService),
+  );
+  app.use(
+    "/api/v1/suppliers",
+    createSupplierRouter(authentication, options.suppliers ?? supplierService),
+  );
+  app.use("/api/v1/lab", createLabRouter(authentication, options.laboratory ?? labService));
   app.use("/api/v1/sales", createSalesRouter(authentication, options.sales ?? salesService));
   app.use("/api/v1/debts", createDebtRouter(authentication, options.debts ?? debtService));
   app.use(

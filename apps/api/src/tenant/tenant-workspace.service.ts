@@ -1,4 +1,4 @@
-﻿import { MembershipStatus, type PrismaClient, type TenantRole } from "@prisma/client";
+import { MembershipStatus, type PrismaClient, type TenantRole } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { createOneTimeToken, hashOneTimeToken } from "../auth/one-time-token.js";
 import { hashPassword } from "../auth/password.js";
@@ -15,6 +15,10 @@ export interface CreateInvitationInput {
   branchIds: string[];
 }
 
+export interface CreateMemberInput extends CreateInvitationInput {
+  fullName: string;
+  password: string;
+}
 export interface AcceptInvitationInput {
   token: string;
   fullName: string;
@@ -37,6 +41,10 @@ export interface UpdateTenantSettingsInput {
   accentColor: string;
   invoiceFooter?: string | undefined;
   supportContact?: string | undefined;
+  invoiceTitle: string;
+  invoicePaperSize: string;
+  invoiceShowLogo: boolean;
+  pharmacistDiscountPercent: number;
 }
 
 function serializeAudit<T extends { id: bigint }>(entry: T) {
@@ -128,6 +136,127 @@ export class TenantWorkspaceService {
     );
   }
 
+  async createMember(
+    principal: AuthenticatedPrincipal,
+    input: CreateMemberInput,
+    requestId?: string,
+  ) {
+    const passwordHash = await hashPassword(input.password);
+    const userId = randomUUID();
+    const membershipId = randomUUID();
+    return withTenantContext(
+      this.client,
+      {
+        tenantId: principal.tenantId,
+        userId: principal.userId,
+        membershipId: principal.membershipId,
+      },
+      async (transaction) => {
+        if (principal.role !== "OWNER" && input.role === "ADMIN") {
+          throw new AppError({
+            statusCode: 403,
+            code: "ADMIN_CREATION_REQUIRES_OWNER",
+            message: "Only the pharmacy owner can register another administrator",
+          });
+        }
+        if (input.allBranches && input.role !== "ADMIN") {
+          throw new AppError({
+            statusCode: 400,
+            code: "ROLE_REQUIRES_BRANCH_ASSIGNMENT",
+            message:
+              "Managers, pharmacists, cashiers and auditors must be assigned to specific branches",
+          });
+        }
+        const branchIds = [...new Set(input.branchIds)];
+        if (!input.allBranches && branchIds.length === 0) {
+          throw new AppError({
+            statusCode: 400,
+            code: "MEMBER_BRANCH_REQUIRED",
+            message: "Choose at least one branch or grant all-branch access",
+          });
+        }
+        if (
+          !principal.allBranches &&
+          (input.allBranches || branchIds.some((id) => !principal.branchIds.includes(id)))
+        ) {
+          throw new AppError({
+            statusCode: 403,
+            code: "BRANCH_ASSIGNMENT_OUTSIDE_SCOPE",
+            message: "You can only assign staff to branches you manage",
+          });
+        }
+        if (!input.allBranches) {
+          const validBranches = await transaction.branch.count({
+            where: { tenantId: principal.tenantId, id: { in: branchIds }, active: true },
+          });
+          if (validBranches !== branchIds.length) {
+            throw new AppError({
+              statusCode: 400,
+              code: "INVALID_BRANCH_ASSIGNMENT",
+              message: "One or more branch assignments are invalid",
+            });
+          }
+        }
+        await setTransactionContext(transaction, {
+          tenantId: principal.tenantId,
+          userId,
+          membershipId,
+        });
+        await transaction.user.create({
+          data: {
+            id: userId,
+            email: input.email?.trim().toLowerCase() || null,
+            fullName: input.fullName.trim(),
+            passwordHash,
+          },
+        });
+        const membership = await transaction.tenantMembership.create({
+          data: {
+            id: membershipId,
+            tenantId: principal.tenantId,
+            userId,
+            username: input.username.trim().toLowerCase(),
+            role: input.role,
+            status: MembershipStatus.ACTIVE,
+            allBranches: input.allBranches,
+            ...(input.allBranches
+              ? {}
+              : {
+                  branches: {
+                    create: branchIds.map((branchId) => ({
+                      branchId,
+                    })),
+                  },
+                }),
+          },
+          include: { branches: { select: { branchId: true } } },
+        });
+        await setTransactionContext(transaction, {
+          tenantId: principal.tenantId,
+          userId: principal.userId,
+          membershipId: principal.membershipId,
+        });
+        await transaction.auditLog.create({
+          data: {
+            tenantId: principal.tenantId,
+            actorUserId: principal.userId,
+            actorMembershipId: principal.membershipId,
+            action: "MEMBER_CREATED",
+            entityType: "tenant_membership",
+            entityId: membership.id,
+            ...(requestId ? { requestId } : {}),
+            after: {
+              username: membership.username,
+              role: membership.role,
+              allBranches: membership.allBranches,
+              branchIds: membership.branches.map(({ branchId }) => branchId),
+            },
+          },
+        });
+        return membership;
+      },
+    );
+  }
   async audits(principal: AuthenticatedPrincipal, take = 100) {
     return withTenantContext(
       this.client,
@@ -309,6 +438,31 @@ export class TenantWorkspaceService {
         membershipId: principal.membershipId,
       },
       async (transaction) => {
+        if (principal.role !== "OWNER" && input.role === "ADMIN") {
+          throw new AppError({
+            statusCode: 403,
+            code: "ADMIN_CREATION_REQUIRES_OWNER",
+            message: "Only the pharmacy owner can assign an administrator",
+          });
+        }
+        if (input.allBranches && input.role !== "ADMIN") {
+          throw new AppError({
+            statusCode: 400,
+            code: "ROLE_REQUIRES_BRANCH_ASSIGNMENT",
+            message:
+              "Managers, pharmacists, cashiers and auditors must be assigned to specific branches",
+          });
+        }
+        if (
+          !principal.allBranches &&
+          (input.allBranches || input.branchIds.some((id) => !principal.branchIds.includes(id)))
+        ) {
+          throw new AppError({
+            statusCode: 403,
+            code: "BRANCH_ASSIGNMENT_OUTSIDE_SCOPE",
+            message: "You can only assign staff to branches you manage",
+          });
+        }
         if (!input.allBranches && input.branchIds.length === 0) {
           throw new AppError({
             statusCode: 400,
@@ -345,7 +499,6 @@ export class TenantWorkspaceService {
               : {
                   branches: {
                     create: input.branchIds.map((branchId) => ({
-                      tenantId: principal.tenantId,
                       branchId,
                     })),
                   },
@@ -480,7 +633,6 @@ export class TenantWorkspaceService {
             : {
                 branches: {
                   create: invitation.branches.map(({ branchId }) => ({
-                    tenantId: parsed.tenantId,
                     branchId,
                   })),
                 },
@@ -548,7 +700,7 @@ export class TenantWorkspaceService {
             message: "The owner role and access cannot be changed here",
           });
         }
-        if (principal.role !== "OWNER" && current.role === "ADMIN") {
+        if (principal.role !== "OWNER" && (current.role === "ADMIN" || input.role === "ADMIN")) {
           throw new AppError({
             statusCode: 403,
             code: "ADMIN_ACCESS_REQUIRES_OWNER",
@@ -560,6 +712,24 @@ export class TenantWorkspaceService {
             statusCode: 400,
             code: "MEMBER_BRANCH_REQUIRED",
             message: "Choose at least one branch or grant all-branch access",
+          });
+        }
+        if (input.allBranches && input.role !== "ADMIN") {
+          throw new AppError({
+            statusCode: 400,
+            code: "ROLE_REQUIRES_BRANCH_ASSIGNMENT",
+            message:
+              "Managers, pharmacists, cashiers and auditors must be assigned to specific branches",
+          });
+        }
+        if (
+          !principal.allBranches &&
+          (input.allBranches || input.branchIds.some((id) => !principal.branchIds.includes(id)))
+        ) {
+          throw new AppError({
+            statusCode: 403,
+            code: "BRANCH_ASSIGNMENT_OUTSIDE_SCOPE",
+            message: "You can only assign staff to branches you manage",
           });
         }
         const uniqueBranchIds = [...new Set(input.branchIds)];
@@ -590,7 +760,6 @@ export class TenantWorkspaceService {
                 ? {}
                 : {
                     create: uniqueBranchIds.map((branchId) => ({
-                      tenantId: principal.tenantId,
                       branchId,
                     })),
                   }),
@@ -628,6 +797,81 @@ export class TenantWorkspaceService {
     );
   }
 
+  async updateBranding(
+    principal: AuthenticatedPrincipal,
+    input: Omit<UpdateTenantSettingsInput, "name" | "timezone" | "currencyCode">,
+    requestId?: string,
+  ) {
+    return withTenantContext(
+      this.client,
+      {
+        tenantId: principal.tenantId,
+        userId: principal.userId,
+        membershipId: principal.membershipId,
+      },
+      async (transaction) => {
+        const previous = await transaction.tenantBranding.findUnique({
+          where: { tenantId: principal.tenantId },
+        });
+        const branding = await transaction.tenantBranding.upsert({
+          where: { tenantId: principal.tenantId },
+          create: {
+            tenantId: principal.tenantId,
+            displayName: input.displayName.trim(),
+            logoUrl: input.logoUrl?.trim() || null,
+            primaryColor: input.primaryColor.toUpperCase(),
+            accentColor: input.accentColor.toUpperCase(),
+            invoiceFooter: input.invoiceFooter?.trim() || null,
+            supportContact: input.supportContact?.trim() || null,
+            invoiceTitle: input.invoiceTitle.trim(),
+            invoicePaperSize: input.invoicePaperSize,
+            invoiceShowLogo: input.invoiceShowLogo,
+            pharmacistDiscountPercent: input.pharmacistDiscountPercent,
+          },
+          update: {
+            displayName: input.displayName.trim(),
+            logoUrl: input.logoUrl?.trim() || null,
+            primaryColor: input.primaryColor.toUpperCase(),
+            accentColor: input.accentColor.toUpperCase(),
+            invoiceFooter: input.invoiceFooter?.trim() || null,
+            supportContact: input.supportContact?.trim() || null,
+            invoiceTitle: input.invoiceTitle.trim(),
+            invoicePaperSize: input.invoicePaperSize,
+            invoiceShowLogo: input.invoiceShowLogo,
+            pharmacistDiscountPercent: input.pharmacistDiscountPercent,
+          },
+        });
+        await transaction.auditLog.create({
+          data: {
+            tenantId: principal.tenantId,
+            actorUserId: principal.userId,
+            actorMembershipId: principal.membershipId,
+            action: "TENANT_BRANDING_UPDATED",
+            entityType: "tenant_branding",
+            entityId: principal.tenantId,
+            ...(requestId ? { requestId } : {}),
+            ...(previous
+              ? {
+                  before: {
+                    displayName: previous.displayName,
+                    logoUrl: previous.logoUrl,
+                    primaryColor: previous.primaryColor,
+                    accentColor: previous.accentColor,
+                  },
+                }
+              : {}),
+            after: {
+              displayName: branding.displayName,
+              logoUrl: branding.logoUrl,
+              primaryColor: branding.primaryColor,
+              accentColor: branding.accentColor,
+            },
+          },
+        });
+        return branding;
+      },
+    );
+  }
   async updateTenantSettings(
     principal: AuthenticatedPrincipal,
     input: UpdateTenantSettingsInput,
@@ -662,6 +906,10 @@ export class TenantWorkspaceService {
             accentColor: input.accentColor.toUpperCase(),
             invoiceFooter: input.invoiceFooter?.trim() || null,
             supportContact: input.supportContact?.trim() || null,
+            invoiceTitle: input.invoiceTitle.trim(),
+            invoicePaperSize: input.invoicePaperSize,
+            invoiceShowLogo: input.invoiceShowLogo,
+            pharmacistDiscountPercent: input.pharmacistDiscountPercent,
           },
           update: {
             displayName: input.displayName.trim(),
@@ -670,6 +918,10 @@ export class TenantWorkspaceService {
             accentColor: input.accentColor.toUpperCase(),
             invoiceFooter: input.invoiceFooter?.trim() || null,
             supportContact: input.supportContact?.trim() || null,
+            invoiceTitle: input.invoiceTitle.trim(),
+            invoicePaperSize: input.invoicePaperSize,
+            invoiceShowLogo: input.invoiceShowLogo,
+            pharmacistDiscountPercent: input.pharmacistDiscountPercent,
           },
         });
         await transaction.auditLog.create({

@@ -24,6 +24,7 @@ export interface CheckoutInput {
   branchId: string;
   customerName: string;
   customerPhone?: string | undefined;
+  customerId?: string | undefined;
   discount: string;
   amountPaid: string;
   paymentMethod?: PaymentMethod | undefined;
@@ -312,7 +313,23 @@ export class PrismaSalesService implements SalesService {
         });
       }
 
-      const seenProducts = new Set<string>();
+      const customer = input.customerId
+        ? await transaction.customer.findUnique({
+            where: {
+              tenantId_id: { tenantId: principal.tenantId, id: input.customerId },
+            },
+          })
+        : null;
+      if (input.customerId && (!customer || !customer.active)) {
+        throw new AppError({
+          statusCode: 404,
+          code: "CUSTOMER_NOT_FOUND",
+          message: "Active customer account not found",
+        });
+      }
+
+      const seenLineKeys = new Set<string>();
+      const reservedByBatch = new Map<string, bigint>();
       const businessDate = businessDateUtc();
       const preparedLines: Array<{
         id: string;
@@ -332,14 +349,15 @@ export class PrismaSalesService implements SalesService {
       }> = [];
 
       for (const line of input.lines) {
-        if (seenProducts.has(line.productId)) {
+        const lineKey = `${line.productId}:${line.packageCode}`;
+        if (seenLineKeys.has(lineKey)) {
           throw new AppError({
             statusCode: 400,
-            code: "DUPLICATE_SALE_PRODUCT",
-            message: "Combine duplicate product lines before checkout",
+            code: "DUPLICATE_SALE_LINE",
+            message: "Combine duplicate product package lines before checkout",
           });
         }
-        seenProducts.add(line.productId);
+        seenLineKeys.add(lineKey);
 
         const packaging = await transaction.productPackage.findUnique({
           where: {
@@ -403,9 +421,13 @@ export class PrismaSalesService implements SalesService {
         }> = [];
         for (const batch of batches) {
           if (remaining === 0n) break;
-          const quantity = batch.quantity_on_hand < remaining ? batch.quantity_on_hand : remaining;
+          const alreadyReserved = reservedByBatch.get(batch.id) ?? 0n;
+          const available = batch.quantity_on_hand - alreadyReserved;
+          if (available <= 0n) continue;
+          const quantity = available < remaining ? available : remaining;
           const unitCost = batch.unit_cost ? decimalToUnitCost(batch.unit_cost) : 0n;
           allocations.push({ batch, quantity, unitCost });
+          reservedByBatch.set(batch.id, alreadyReserved + quantity);
           remaining -= quantity;
         }
         if (remaining > 0n) {
@@ -449,6 +471,23 @@ export class PrismaSalesService implements SalesService {
           message: "Discount cannot exceed subtotal",
         });
       }
+      if (principal.role === "PHARMACIST" && discount > 0n) {
+        const branding = await transaction.tenantBranding.findUnique({
+          where: { tenantId: principal.tenantId },
+          select: { pharmacistDiscountPercent: true },
+        });
+        const allowedBasisPoints = BigInt(
+          Math.round(Number(branding?.pharmacistDiscountPercent ?? 0) * 100),
+        );
+        const maximumDiscount = (subtotal * allowedBasisPoints) / 10_000n;
+        if (discount > maximumDiscount) {
+          throw new AppError({
+            statusCode: 403,
+            code: "PHARMACIST_DISCOUNT_LIMIT_EXCEEDED",
+            message: `Pharmacist discount cannot exceed ${Number(allowedBasisPoints) / 100}%`,
+          });
+        }
+      }
       const grandTotal = subtotal - discount;
       const amountPaid = parseMoney(input.amountPaid, "amount paid");
       if (amountPaid > grandTotal) {
@@ -487,6 +526,20 @@ export class PrismaSalesService implements SalesService {
       )}-${String(sequence.lastValue).padStart(6, "0")}`;
       const saleId = randomUUID();
       const remainingBalance = grandTotal - amountPaid;
+      const resolvedCustomerName = customer?.name ?? input.customerName.trim();
+      const resolvedCustomerPhone = customer?.phone ?? optionalText(input.customerPhone);
+      if (
+        remainingBalance > 0n &&
+        (!resolvedCustomerPhone ||
+          !resolvedCustomerName ||
+          resolvedCustomerName.trim().toLowerCase() === "walk-in customer")
+      ) {
+        throw new AppError({
+          statusCode: 400,
+          code: "DEBT_CUSTOMER_DETAILS_REQUIRED",
+          message: "Customer name and phone are required when the sale is not paid in full",
+        });
+      }
       await transaction.sale.create({
         data: {
           id: saleId,
@@ -494,8 +547,9 @@ export class PrismaSalesService implements SalesService {
           branchId: input.branchId,
           invoiceNumber,
           businessDate,
-          customerName: input.customerName.trim(),
-          customerPhone: optionalText(input.customerPhone) ?? null,
+          customerId: customer?.id ?? null,
+          customerName: resolvedCustomerName,
+          customerPhone: resolvedCustomerPhone ?? null,
           subtotal: formatMoney(subtotal),
           discount: formatMoney(discount),
           grandTotal: formatMoney(grandTotal),
@@ -508,6 +562,7 @@ export class PrismaSalesService implements SalesService {
       });
 
       let allocatedDiscount = 0n;
+      const runningBatchBalances = new Map<string, bigint>();
       for (const [lineIndex, line] of preparedLines.entries()) {
         const lineDiscount =
           lineIndex === preparedLines.length - 1
@@ -538,7 +593,10 @@ export class PrismaSalesService implements SalesService {
           },
         });
         for (const [allocationIndex, allocation] of line.allocations.entries()) {
-          const balanceAfter = allocation.batch.quantity_on_hand - allocation.quantity;
+          const currentBalance =
+            runningBatchBalances.get(allocation.batch.id) ?? allocation.batch.quantity_on_hand;
+          const balanceAfter = currentBalance - allocation.quantity;
+          runningBatchBalances.set(allocation.batch.id, balanceAfter);
           await transaction.inventoryBatch.update({
             where: {
               tenantId_id: {

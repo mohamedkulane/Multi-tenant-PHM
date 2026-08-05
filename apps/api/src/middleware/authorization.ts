@@ -19,5 +19,6 @@ export function requirePermission(permission: Permission): RequestHandler {
 }
 
 export function canAccessBranch(principal: NonNullable<Express.Request["auth"]>, branchId: string) {
-  return principal.allBranches || principal.branchIds.includes(branchId);
+  const mayUseAllBranches = principal.role === "OWNER" || principal.role === "ADMIN";
+  return (mayUseAllBranches && principal.allBranches) || principal.branchIds.includes(branchId);
 }

@@ -42,7 +42,9 @@ function toPrincipal(input: {
     membershipId: input.membership.id,
     username: input.membership.username,
     role: input.membership.role,
-    allBranches: input.membership.allBranches,
+    allBranches:
+      (input.membership.role === "OWNER" || input.membership.role === "ADMIN") &&
+      input.membership.allBranches,
     branchIds: input.membership.branches.map(({ branchId }) => branchId),
   };
 }
@@ -89,13 +91,18 @@ async function loadPrincipal(
     }),
   ]);
 
+  const subscription = await transaction.tenantSubscription.findUnique({
+    where: { tenantId: session.tenantId },
+    select: { endsAt: true },
+  });
   if (
     !tenant ||
     !membership ||
     !user ||
     !activeTenantStatuses.has(tenant.status) ||
     membership.status !== "ACTIVE" ||
-    user.status !== "ACTIVE"
+    user.status !== "ACTIVE" ||
+    Boolean(subscription?.endsAt && subscription.endsAt <= new Date())
   ) {
     return null;
   }
@@ -149,7 +156,13 @@ export class PrismaAuthService implements AuthService {
       const [user, tenant] = await Promise.all([
         transaction.user.findUnique({
           where: { id: membership.userId },
-          select: { id: true, fullName: true, passwordHash: true, status: true },
+          select: {
+            id: true,
+            fullName: true,
+            passwordHash: true,
+            status: true,
+            platformAccess: { select: { active: true } },
+          },
         }),
         transaction.tenant.findUnique({
           where: { id: directory.tenantId },
@@ -161,11 +174,44 @@ export class PrismaAuthService implements AuthService {
         !user ||
         !tenant ||
         user.status !== "ACTIVE" ||
+        user.platformAccess?.active ||
         !(await verifyPassword(user.passwordHash, input.password))
       ) {
         throw invalidCredentials();
       }
 
+      const [subscription, billingSetting] = await Promise.all([
+        transaction.tenantSubscription.findUnique({
+          where: { tenantId: directory.tenantId },
+          select: { endsAt: true },
+        }),
+        transaction.platformSetting.findUnique({ where: { key: "billing" } }),
+      ]);
+      if (subscription?.endsAt && subscription.endsAt <= new Date()) {
+        const billing =
+          billingSetting?.value &&
+          typeof billingSetting.value === "object" &&
+          !Array.isArray(billingSetting.value)
+            ? (billingSetting.value as Record<string, unknown>)
+            : {};
+        const billingText = (key: string, fallback: string) => {
+          const value = billing[key];
+          return typeof value === "string" || typeof value === "number" ? String(value) : fallback;
+        };
+        throw new AppError({
+          statusCode: 402,
+          code: "TENANT_SUBSCRIPTION_EXPIRED",
+          message:
+            "Subscription-ka pharmacy-ga wuu dhacay. Bixi " +
+            billingText("monthlyFee", "fee-ga") +
+            " " +
+            billingText("currencyCode", "") +
+            " lambarka " +
+            billingText("paymentNumber", "platform admin") +
+            ". " +
+            billingText("instructions", "La xiriir platform admin."),
+        });
+      }
       const token = createSessionToken(directory.tenantId);
       const expiresAt = new Date(Date.now() + sessionDurationMs);
       const session = await transaction.session.create({

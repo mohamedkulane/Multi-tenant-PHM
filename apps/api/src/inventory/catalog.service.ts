@@ -1,7 +1,8 @@
-﻿import type { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../database/prisma.js";
 import { withTenantContext } from "../database/tenant-context.js";
 import { AppError } from "../errors/app-error.js";
+import { canAccessBranch } from "../middleware/authorization.js";
 import type { AuthenticatedPrincipal } from "../auth/auth.types.js";
 import { buildPackagingPlan, type PackagingCountKey, type ProductCategory } from "./packaging.js";
 
@@ -34,8 +35,16 @@ export interface UpdateProductInput {
   manufacturer?: string | null | undefined;
   requiresPrescription?: boolean | undefined;
   active?: boolean | undefined;
+  deactivationReason?: string | undefined;
   packagePricesMinor?: Record<string, number | null | undefined> | undefined;
   expectedVersion: number;
+}
+
+export interface ConfigureBranchProductInput {
+  branchId: string;
+  active?: boolean | undefined;
+  reorderPointBaseUnits?: bigint | undefined;
+  reason: string;
 }
 
 export interface CatalogService {
@@ -50,6 +59,12 @@ export interface CatalogService {
     principal: AuthenticatedPrincipal,
     productId: string,
     input: UpdateProductInput,
+    requestId?: string,
+  ): Promise<unknown>;
+  configureBranch(
+    principal: AuthenticatedPrincipal,
+    productId: string,
+    input: ConfigureBranchProductInput,
     requestId?: string,
   ): Promise<unknown>;
 }
@@ -258,6 +273,20 @@ export class PrismaCatalogService implements CatalogService {
     input: UpdateProductInput,
     requestId?: string,
   ) {
+    if (input.active !== undefined && principal.role !== "OWNER" && principal.role !== "ADMIN") {
+      throw new AppError({
+        statusCode: 403,
+        code: "GLOBAL_PRODUCT_STATUS_FORBIDDEN",
+        message: "Only an owner or administrator can archive a product for every branch",
+      });
+    }
+    if (input.active === false && !input.deactivationReason?.trim()) {
+      throw new AppError({
+        statusCode: 400,
+        code: "PRODUCT_ARCHIVE_REASON_REQUIRED",
+        message: "A reason is required when archiving a product",
+      });
+    }
     return withTenantContext(
       prisma,
       {
@@ -366,7 +395,7 @@ export class PrismaCatalogService implements CatalogService {
             actorUserId: principal.userId,
             actorMembershipId: principal.membershipId,
             ...(requestId ? { requestId } : {}),
-            action: "PRODUCT_UPDATED",
+            action: input.active === false ? "PRODUCT_ARCHIVED" : "PRODUCT_UPDATED",
             entityType: "product",
             entityId: product.id,
             before: { name: existing.name, active: existing.active },
@@ -376,9 +405,152 @@ export class PrismaCatalogService implements CatalogService {
               version: product.version,
               packagePricesChanged: Object.keys(input.packagePricesMinor ?? {}).length,
             },
+            ...(input.deactivationReason
+              ? { metadata: { reason: input.deactivationReason.trim() } }
+              : {}),
           },
         });
         return serializeProduct(product);
+      },
+    );
+  }
+
+  async configureBranch(
+    principal: AuthenticatedPrincipal,
+    productId: string,
+    input: ConfigureBranchProductInput,
+    requestId?: string,
+  ) {
+    if (!["OWNER", "ADMIN", "MANAGER"].includes(principal.role)) {
+      throw new AppError({
+        statusCode: 403,
+        code: "BRANCH_PRODUCT_CONFIG_FORBIDDEN",
+        message: "Only an owner, administrator, or branch manager can configure branch products",
+      });
+    }
+    if (!canAccessBranch(principal, input.branchId)) {
+      throw new AppError({
+        statusCode: 403,
+        code: "BRANCH_ACCESS_DENIED",
+        message: "You do not have access to this branch",
+      });
+    }
+    if (!input.reason.trim()) {
+      throw new AppError({
+        statusCode: 400,
+        code: "BRANCH_PRODUCT_REASON_REQUIRED",
+        message: "A reason is required for branch product changes",
+      });
+    }
+    return withTenantContext(
+      prisma,
+      {
+        tenantId: principal.tenantId,
+        userId: principal.userId,
+        membershipId: principal.membershipId,
+        branchId: input.branchId,
+      },
+      async (transaction) => {
+        const [product, branch, existing] = await Promise.all([
+          transaction.product.findUnique({
+            where: { tenantId_id: { tenantId: principal.tenantId, id: productId } },
+            select: { id: true, name: true, active: true },
+          }),
+          transaction.branch.findUnique({
+            where: { tenantId_id: { tenantId: principal.tenantId, id: input.branchId } },
+            select: { id: true, name: true, active: true },
+          }),
+          transaction.branchProduct.findUnique({
+            where: {
+              tenantId_branchId_productId: {
+                tenantId: principal.tenantId,
+                branchId: input.branchId,
+                productId,
+              },
+            },
+          }),
+        ]);
+        if (!product) {
+          throw new AppError({
+            statusCode: 404,
+            code: "PRODUCT_NOT_FOUND",
+            message: "Product not found",
+          });
+        }
+        if (!branch?.active) {
+          throw new AppError({
+            statusCode: 409,
+            code: "BRANCH_INACTIVE",
+            message: "The branch is not active",
+          });
+        }
+        if (!product.active && input.active !== false) {
+          throw new AppError({
+            statusCode: 409,
+            code: "PRODUCT_ARCHIVED",
+            message: "An archived tenant product cannot be enabled at a branch",
+          });
+        }
+        const configured = await transaction.branchProduct.upsert({
+          where: {
+            tenantId_branchId_productId: {
+              tenantId: principal.tenantId,
+              branchId: input.branchId,
+              productId,
+            },
+          },
+          create: {
+            tenantId: principal.tenantId,
+            branchId: input.branchId,
+            productId,
+            active: input.active ?? true,
+            reorderPointBaseUnit: input.reorderPointBaseUnits ?? 0n,
+          },
+          update: {
+            ...(input.active !== undefined ? { active: input.active } : {}),
+            ...(input.reorderPointBaseUnits !== undefined
+              ? { reorderPointBaseUnit: input.reorderPointBaseUnits }
+              : {}),
+          },
+        });
+        await transaction.auditLog.create({
+          data: {
+            tenantId: principal.tenantId,
+            branchId: input.branchId,
+            actorUserId: principal.userId,
+            actorMembershipId: principal.membershipId,
+            ...(requestId ? { requestId } : {}),
+            action:
+              input.active === false
+                ? "PRODUCT_DISABLED_AT_BRANCH"
+                : input.active === true
+                  ? "PRODUCT_ENABLED_AT_BRANCH"
+                  : "PRODUCT_REORDER_POINT_UPDATED",
+            entityType: "branch_product",
+            entityId: productId,
+            ...(existing
+              ? {
+                  before: {
+                    active: existing.active,
+                    reorderPointBaseUnits: existing.reorderPointBaseUnit.toString(),
+                  },
+                }
+              : {}),
+            after: {
+              active: configured.active,
+              reorderPointBaseUnits: configured.reorderPointBaseUnit.toString(),
+            },
+            metadata: {
+              reason: input.reason.trim(),
+              productName: product.name,
+              branchName: branch.name,
+            },
+          },
+        });
+        return {
+          ...configured,
+          reorderPointBaseUnit: configured.reorderPointBaseUnit.toString(),
+        };
       },
     );
   }

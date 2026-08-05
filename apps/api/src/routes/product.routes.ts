@@ -52,6 +52,7 @@ const updateProductSchema = z
     manufacturer: z.string().trim().max(180).nullable().optional(),
     requiresPrescription: z.boolean().optional(),
     active: z.boolean().optional(),
+    deactivationReason: z.string().trim().min(3).max(500).optional(),
     packagePricesMinor: z
       .record(z.string().trim().min(1).max(40), z.number().int().nonnegative().nullable())
       .optional(),
@@ -60,7 +61,25 @@ const updateProductSchema = z
   .refine(
     (body) => Object.keys(body).some((key) => key !== "expectedVersion"),
     "At least one product field must be changed",
-  );
+  )
+  .refine((body) => body.active !== false || Boolean(body.deactivationReason), {
+    message: "A reason is required when archiving a product",
+    path: ["deactivationReason"],
+  });
+
+const branchProductSchema = z
+  .object({
+    branchId: z.uuid(),
+    active: z.boolean().optional(),
+    reorderPointBaseUnits: z
+      .union([z.string().regex(/^[0-9]+$/), z.number().int().nonnegative()])
+      .transform((value) => BigInt(value))
+      .optional(),
+    reason: z.string().trim().min(3).max(500),
+  })
+  .refine((body) => body.active !== undefined || body.reorderPointBaseUnits !== undefined, {
+    message: "Set an active status or minimum stock level",
+  });
 
 const idSchema = z.uuid();
 
@@ -90,6 +109,20 @@ export function createProductRouter(
     );
     response.status(201).json({ data: product });
   });
+
+  router.put(
+    "/:productId/branch-config",
+    requirePermission("inventory.manage"),
+    async (request, response) => {
+      const configured = await service.configureBranch(
+        request.auth!,
+        idSchema.parse(request.params.productId),
+        branchProductSchema.parse(request.body),
+        response.locals.requestId as string | undefined,
+      );
+      response.json({ data: configured });
+    },
+  );
 
   router.patch("/:productId", requirePermission("inventory.manage"), async (request, response) => {
     const product = await service.update(

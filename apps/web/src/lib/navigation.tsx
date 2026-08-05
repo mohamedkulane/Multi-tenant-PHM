@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
 export function navigate(path: string, replace = false) {
   if (replace) window.history.replaceState({}, "", path);
@@ -21,16 +21,19 @@ export function Link({
   className,
   children,
   onClick,
+  style,
 }: {
   to: string;
   className?: string;
   children: React.ReactNode;
   onClick?: () => void;
+  style?: CSSProperties;
 }) {
   return (
     <a
       href={to}
       className={className}
+      style={style}
       onClick={(event) => {
         if (
           !event.defaultPrevented &&

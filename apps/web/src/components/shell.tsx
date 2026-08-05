@@ -1,11 +1,11 @@
-﻿import {
+import {
   BarChart3,
   Bell,
   Boxes,
   Building2,
   ChevronDown,
-  ClipboardList,
   CreditCard,
+  FlaskConical,
   FileClock,
   HeartPulse,
   LayoutDashboard,
@@ -18,41 +18,104 @@
   Settings2,
   ShieldCheck,
   ShoppingCart,
+  Truck,
   Users,
   WalletCards,
   X,
 } from "lucide-react";
-import { useState } from "react";
-import { removeSession } from "../api/client";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { getData, removeSession } from "../api/client";
 import { Link, navigate } from "../lib/navigation";
+import { showToast } from "./toast";
 import type { Branch, PlatformPrincipal, TenantPrincipal, Workspace } from "../types";
+
+const displayText = (value: unknown, fallback = "") =>
+  typeof value === "string" || typeof value === "number" ? String(value) : fallback;
 
 interface NavigationItem {
   to: string;
   label: string;
   icon: typeof LayoutDashboard;
+  roles?: TenantPrincipal["role"][];
 }
 
 const tenantNavigation: NavigationItem[] = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  {
+    to: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    roles: ["OWNER", "ADMIN", "MANAGER", "PHARMACIST", "AUDITOR"],
+  },
   { to: "/products", label: "Products", icon: PackageSearch },
+  { to: "/customers", label: "Customers", icon: Users },
   { to: "/inventory", label: "Inventory", icon: Boxes },
-  { to: "/sales", label: "Sales & invoices", icon: ShoppingCart },
-  { to: "/debts", label: "Debts", icon: WalletCards },
-  { to: "/expenses", label: "Expenses", icon: Receipt },
-  { to: "/reports", label: "Reports", icon: BarChart3 },
-  { to: "/staff", label: "Staff & branches", icon: Users },
-  { to: "/operations", label: "Jobs & alerts", icon: Bell },
-  { to: "/audit", label: "Audit trail", icon: ScrollText },
+  {
+    to: "/suppliers",
+    label: "Suppliers",
+    icon: Truck,
+    roles: ["OWNER", "ADMIN", "MANAGER", "PHARMACIST", "AUDITOR"],
+  },
+  {
+    to: "/lab",
+    label: "Laboratory",
+    icon: FlaskConical,
+    roles: ["OWNER", "ADMIN", "MANAGER", "PHARMACIST", "AUDITOR"],
+  },
+  {
+    to: "/sales",
+    label: "Sales & invoices",
+    icon: ShoppingCart,
+    roles: ["OWNER", "ADMIN", "MANAGER", "PHARMACIST", "CASHIER"],
+  },
+  {
+    to: "/debts",
+    label: "Debts",
+    icon: WalletCards,
+    roles: ["OWNER", "ADMIN", "MANAGER"],
+  },
+  {
+    to: "/expenses",
+    label: "Expenses",
+    icon: Receipt,
+    roles: ["OWNER", "ADMIN", "MANAGER", "AUDITOR"],
+  },
+  {
+    to: "/reports",
+    label: "Reports",
+    icon: BarChart3,
+    roles: ["OWNER", "ADMIN", "MANAGER", "PHARMACIST", "AUDITOR"],
+  },
+  {
+    to: "/staff",
+    label: "Staff & branches",
+    icon: Users,
+    roles: ["OWNER", "ADMIN", "MANAGER", "AUDITOR"],
+  },
+  {
+    to: "/operations",
+    label: "Jobs & alerts",
+    icon: Bell,
+    roles: ["OWNER", "ADMIN", "MANAGER", "PHARMACIST", "AUDITOR"],
+  },
+  {
+    to: "/audit",
+    label: "Audit trail",
+    icon: ScrollText,
+    roles: ["OWNER", "ADMIN", "MANAGER", "AUDITOR"],
+  },
   { to: "/account", label: "Account", icon: Settings2 },
 ];
 
 const platformNavigation: NavigationItem[] = [
-  { to: "/platform", label: "Overview", icon: LayoutDashboard },
+  { to: "/platform/dashboard", label: "Overview", icon: LayoutDashboard },
   { to: "/platform/tenants", label: "Tenants", icon: Building2 },
   { to: "/platform/plans", label: "Plans & limits", icon: CreditCard },
+  { to: "/platform/administrators", label: "Administrators", icon: Users },
+  { to: "/platform/notifications", label: "Notifications", icon: Bell },
   { to: "/platform/support", label: "Support access", icon: LifeBuoy },
   { to: "/platform/audit", label: "Platform audit", icon: FileClock },
+  { to: "/platform/settings", label: "Platform settings", icon: Settings2 },
 ];
 
 function Sidebar({
@@ -61,13 +124,21 @@ function Sidebar({
   open,
   close,
   platform,
+  primaryColor,
+  accentColor,
+  logoUrl,
 }: {
   navigation: NavigationItem[];
   currentPath: string;
   open: boolean;
   close: () => void;
   platform: boolean;
+  primaryColor?: string;
+  accentColor?: string;
+  logoUrl?: string;
 }) {
+  const primary = primaryColor ?? "#0d2926";
+  const accent = accentColor ?? "#b8f39a";
   return (
     <>
       {open ? (
@@ -78,18 +149,32 @@ function Sidebar({
         />
       ) : null}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-slate-800 bg-[#0d2926] text-white transition-transform lg:translate-x-0 ${
+        style={{ backgroundColor: primary }}
+        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-slate-800 text-white transition-transform lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         <div className="flex h-20 items-center justify-between border-b border-white/10 px-5">
           <Link
-            to={platform ? "/platform" : "/dashboard"}
+            to={platform ? "/platform/dashboard" : "/dashboard"}
             className="flex items-center gap-3"
             onClick={close}
           >
-            <div className="grid size-10 place-items-center rounded-xl bg-[#b8f39a] text-[#0d2926]">
-              {platform ? <ShieldCheck size={22} /> : <HeartPulse size={22} />}
+            <div
+              className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-xl border border-white/15"
+              style={{ backgroundColor: accent, color: primary }}
+            >
+              {!platform && logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt="Pharmacy logo"
+                  className="size-full bg-white object-contain p-1"
+                />
+              ) : platform ? (
+                <ShieldCheck size={24} />
+              ) : (
+                <HeartPulse size={24} />
+              )}
             </div>
             <div>
               <p className="text-lg font-bold tracking-tight">PHMS</p>
@@ -110,16 +195,17 @@ function Sidebar({
           {navigation.map(({ to, label, icon: Icon }) => {
             const active =
               currentPath === to ||
-              (to !== "/platform" && to !== "/dashboard" && currentPath.startsWith(`${to}/`));
+              (to !== "/platform/dashboard" &&
+                to !== "/dashboard" &&
+                currentPath.startsWith(`${to}/`));
             return (
               <Link
                 key={to}
                 to={to}
                 onClick={close}
+                {...(active ? { style: { backgroundColor: accent, color: primary } } : {})}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
-                  active
-                    ? "bg-[#b8f39a] text-[#0d2926]"
-                    : "text-emerald-50/80 hover:bg-white/10 hover:text-white"
+                  active ? "shadow-sm" : "text-emerald-50/80 hover:bg-white/10 hover:text-white"
                 }`}
               >
                 <Icon size={18} />
@@ -128,15 +214,6 @@ function Sidebar({
             );
           })}
         </nav>
-        <div className="border-t border-white/10 p-4">
-          <Link
-            to={platform ? "/login" : "/platform/login"}
-            className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-emerald-100 hover:bg-white/10"
-          >
-            <ClipboardList size={16} />
-            {platform ? "Open pharmacy login" : "Open platform login"}
-          </Link>
-        </div>
       </aside>
     </>
   );
@@ -158,18 +235,61 @@ export function TenantShell({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const announcedPlatformMessages = useRef(new Set<string>());
+  const queryClient = useQueryClient();
+  const notifications = useQuery({
+    queryKey: ["notifications", branch?.id, "shell"],
+    queryFn: () =>
+      getData<{ unread: number; items: Array<Record<string, unknown>> }>(
+        `/notifications?branchId=${branch!.id}`,
+      ),
+    enabled: Boolean(branch) && principal.role !== "CASHIER",
+    refetchInterval: 60_000,
+  });
+  const unreadNotifications = notifications.data?.unread ?? 0;
+  const notificationItems = notifications.data?.items ?? [];
+  useEffect(() => {
+    const message = notificationItems.find(
+      (item) =>
+        item["type"] === "PLATFORM_MESSAGE" &&
+        !item["readAt"] &&
+        !announcedPlatformMessages.current.has(String(item["id"])),
+    );
+    if (!message) return;
+    announcedPlatformMessages.current.add(String(message["id"]));
+    showToast({
+      title: displayText(message["title"], "Platform notification"),
+      message: displayText(message["message"], "You have a new platform message."),
+      tone: "info",
+      durationMs: 15_000,
+      actionLabel: "Open Alerts Center",
+      actionHref: "/operations",
+    });
+  }, [notificationItems]);
+  const tenantTheme = {
+    "--tenant-primary": workspace.branding?.primaryColor ?? "#0d2926",
+    "--tenant-accent": workspace.branding?.accentColor ?? "#b8f39a",
+  } as CSSProperties;
   const logout = async () => {
     await removeSession("/auth/logout");
+    queryClient.clear();
+    window.localStorage.removeItem("phms.branch");
     navigate("/login", true);
   };
   return (
-    <div className="min-h-screen bg-[#f4f7f6]">
+    <div className="min-h-screen bg-[#f4f7f6]" style={tenantTheme}>
       <Sidebar
-        navigation={tenantNavigation}
+        navigation={tenantNavigation.filter(
+          (item) => !item.roles || item.roles.includes(principal.role),
+        )}
         currentPath={currentPath}
         open={open}
         close={() => setOpen(false)}
         platform={false}
+        primaryColor={workspace.branding?.primaryColor ?? "#0d2926"}
+        accentColor={workspace.branding?.accentColor ?? "#b8f39a"}
+        {...(workspace.branding?.logoUrl ? { logoUrl: workspace.branding.logoUrl } : {})}
       />
       <div className="lg:pl-72">
         <header className="sticky top-0 z-30 flex min-h-18 items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
@@ -181,6 +301,13 @@ export function TenantShell({
             >
               <Menu size={20} />
             </button>
+            {workspace.branding?.logoUrl ? (
+              <img
+                src={workspace.branding.logoUrl}
+                alt="Pharmacy logo"
+                className="size-10 rounded-xl border border-slate-200 bg-white object-contain p-1"
+              />
+            ) : null}
             <div className="min-w-0">
               <p className="truncate text-sm font-bold text-slate-900">
                 {workspace.branding?.displayName ?? workspace.tenant.name}
@@ -188,11 +315,71 @@ export function TenantShell({
               <p className="truncate text-xs text-slate-500">
                 {principal.isSupportSession
                   ? "Read-only support session"
-                  : `${principal.fullName} Â· ${principal.role}`}
+                  : `${principal.fullName} | ${principal.role}`}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {principal.role !== "CASHIER" ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setNotificationsOpen((value) => !value)}
+                  aria-label={"Digniinaha (Notifications): " + unreadNotifications + " unread"}
+                  className="relative grid size-10 place-items-center rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50"
+                >
+                  <Bell size={18} />
+                  {unreadNotifications > 0 ? (
+                    <span className="absolute -top-1 -right-1 min-w-5 rounded-full bg-rose-600 px-1 text-center text-[10px] font-bold leading-5 text-white">
+                      {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                    </span>
+                  ) : null}
+                </button>
+                {notificationsOpen ? (
+                  <div className="absolute right-0 top-12 z-50 w-[min(92vw,24rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                    <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                      <strong className="text-sm">Digniinaha (Notifications)</strong>
+                      <span className="rounded-full bg-rose-600 px-2 py-0.5 text-xs font-bold text-white">
+                        {unreadNotifications}
+                      </span>
+                    </div>
+                    <div className="max-h-80 overflow-y-auto">
+                      {notificationItems.slice(0, 6).map((item) => (
+                        <button
+                          key={String(item["id"])}
+                          type="button"
+                          className="block w-full border-b border-slate-100 px-4 py-3 text-left hover:bg-slate-50"
+                          onClick={() => {
+                            setNotificationsOpen(false);
+                            navigate("/operations");
+                          }}
+                        >
+                          <span className="text-xs font-bold uppercase text-rose-700">
+                            {displayText(item["type"], "ALERT").replaceAll("_", " ")}
+                          </span>
+                          <p className="mt-1 text-sm font-bold text-slate-900">
+                            {displayText(item["title"], "Notification")}
+                          </p>
+                          <p className="mt-1 line-clamp-2 text-xs text-slate-500">
+                            {displayText(item["message"])}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      className="w-full px-4 py-3 text-sm font-bold text-emerald-800 hover:bg-emerald-50"
+                      onClick={() => {
+                        setNotificationsOpen(false);
+                        navigate("/operations");
+                      }}
+                    >
+                      View all alerts
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}{" "}
             {workspace.branches.length ? (
               <label className="relative hidden sm:block">
                 <span className="sr-only">Active branch</span>
@@ -243,18 +430,48 @@ export function PlatformShell({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const settings = useQuery({
+    queryKey: ["platform-settings"],
+    queryFn: () => getData<Record<string, Record<string, unknown>>>("/platform/settings"),
+  });
+  const profile = settings.data?.["platform_profile"] ?? {};
+  const primaryColor = displayText(profile["primaryColor"], "#0d2926");
+  const accentColor = displayText(profile["accentColor"], "#b8f39a");
+  const displayName = displayText(profile["displayName"], "PHMS");
+  const logoUrl = displayText(profile["logoUrl"]);
+
   const logout = async () => {
     await removeSession("/platform/auth/logout");
+    queryClient.clear();
     navigate("/platform/login", true);
   };
   return (
-    <div className="min-h-screen bg-[#f3f5f7]">
+    <div
+      className="min-h-screen bg-[#f3f5f7]"
+      style={{ "--tenant-primary": primaryColor, "--tenant-accent": accentColor } as CSSProperties}
+    >
       <Sidebar
-        navigation={platformNavigation}
+        navigation={
+          principal.role === "SUPER_ADMIN"
+            ? platformNavigation
+            : platformNavigation.filter(
+                (item) =>
+                  ![
+                    "/platform/administrators",
+                    "/platform/notifications",
+                    "/platform/audit",
+                    "/platform/support",
+                  ].includes(item.to),
+              )
+        }
         currentPath={currentPath}
         open={open}
         close={() => setOpen(false)}
         platform
+        primaryColor={primaryColor}
+        accentColor={accentColor}
+        {...(logoUrl ? { logoUrl } : {})}
       />
       <div className="lg:pl-72">
         <header className="sticky top-0 z-30 flex min-h-18 items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
@@ -267,9 +484,9 @@ export function PlatformShell({
               <Menu size={20} />
             </button>
             <div>
-              <p className="text-sm font-bold text-slate-900">Platform control</p>
+              <p className="text-sm font-bold text-slate-900">{displayName}</p>
               <p className="text-xs text-slate-500">
-                {principal.fullName} Â· {principal.role.replace("_", " ")}
+                {principal.fullName} / {principal.role.replace("_", " ")}
               </p>
             </div>
           </div>

@@ -37,6 +37,7 @@ enum TenantRole {
 
 enum PlatformRole {
   SUPER_ADMIN
+  ADMIN
   SUPPORT
   AUDITOR
 }

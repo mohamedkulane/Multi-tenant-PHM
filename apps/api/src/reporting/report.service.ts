@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+﻿import { Prisma } from "@prisma/client";
 import type { AuthenticatedPrincipal } from "../auth/auth.types.js";
 import { prisma } from "../database/prisma.js";
 import { withTenantContext } from "../database/tenant-context.js";
@@ -130,11 +130,13 @@ export class PrismaReportService implements ReportService {
             LEFT JOIN (
               SELECT tenant_id, branch_id, product_id, sum(quantity_on_hand) quantity
               FROM public.inventory_batches
+              WHERE expiry_date >= CURRENT_DATE
               GROUP BY tenant_id, branch_id, product_id
             ) stock ON stock.tenant_id = bp.tenant_id
               AND stock.branch_id = bp.branch_id AND stock.product_id = bp.product_id
             WHERE bp.tenant_id = ${principal.tenantId}::uuid
               AND bp.branch_id = ${range.branchId}::uuid AND bp.active
+              AND bp.reorder_point_base_units > 0
               AND COALESCE(stock.quantity, 0) <= bp.reorder_point_base_units
           ) AS low_stock_products
       `);
@@ -248,6 +250,7 @@ export class PrismaReportService implements ReportService {
         FROM public.products p
         LEFT JOIN public.inventory_batches b ON b.tenant_id = p.tenant_id
           AND b.product_id = p.id AND b.branch_id = ${branchId}::uuid
+          AND b.expiry_date >= CURRENT_DATE
         LEFT JOIN public.branch_products bp ON bp.tenant_id = p.tenant_id
           AND bp.product_id = p.id AND bp.branch_id = ${branchId}::uuid
         WHERE p.tenant_id = ${principal.tenantId}::uuid AND p.active

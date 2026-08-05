@@ -1,7 +1,10 @@
-﻿import { HeartPulse, KeyRound, ShieldCheck } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { HeartPulse, KeyRound, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { errorMessage, sendData } from "../api/client";
+import { showToast } from "../components/toast";
 import { Field, SuccessMessage } from "../components/ui";
+import { platformDashboardPath, tenantLandingPath } from "../lib/auth-navigation";
 import { Link, navigate } from "../lib/navigation";
 import type { PlatformPrincipal, TenantPrincipal } from "../types";
 
@@ -46,7 +49,7 @@ function LoginFrame({
           </p>
         </div>
         <p className="relative text-xs text-emerald-100/60">
-          Secure local development Â· PostgreSQL Â· Prisma Â· Express Â· React
+          Secure local development | PostgreSQL | Prisma | Express | React
         </p>
       </section>
       <section className="grid place-items-center p-5 sm:p-10">
@@ -65,14 +68,6 @@ function LoginFrame({
           <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
             {children}
           </div>
-          <div className="mt-5 text-center text-sm">
-            <Link
-              className="font-semibold text-emerald-700 hover:text-emerald-900"
-              to={platform ? "/login" : "/platform/login"}
-            >
-              {platform ? "Sign in to a pharmacy tenant" : "Open platform administration"}
-            </Link>
-          </div>
         </div>
       </section>
     </main>
@@ -80,6 +75,7 @@ function LoginFrame({
 }
 
 export function TenantLoginPage() {
+  const queryClient = useQueryClient();
   const [form, setForm] = useState({
     tenantSlug: "",
     username: "",
@@ -92,10 +88,18 @@ export function TenantLoginPage() {
     setError("");
     setPending(true);
     try {
-      await sendData<TenantPrincipal>("post", "/auth/login", form);
-      navigate("/dashboard", true);
+      const principal = await sendData<TenantPrincipal>("post", "/auth/login", form);
+      queryClient.setQueryData(["tenant-principal"], principal);
+      await queryClient.invalidateQueries({ queryKey: ["tenant-workspace"] });
+      showToast({
+        title: "Login successful",
+        message: `Welcome back, ${principal.fullName}.`,
+      });
+      navigate(tenantLandingPath(principal.role), true);
     } catch (caught) {
-      setError(errorMessage(caught));
+      const message = errorMessage(caught);
+      setError(message);
+      showToast({ title: "Login failed", message, tone: "error", durationMs: 10_000 });
     } finally {
       setPending(false);
     }
@@ -138,7 +142,7 @@ export function TenantLoginPage() {
         {error ? <p className="text-sm font-semibold text-rose-700">{error}</p> : null}
         <button className="btn-primary w-full" disabled={pending}>
           <KeyRound size={17} />
-          {pending ? "Signing inâ€¦" : "Sign in"}
+          {pending ? "Signing in..." : "Sign in"}
         </button>
         <Link
           to="/accept-invitation"
@@ -152,6 +156,7 @@ export function TenantLoginPage() {
 }
 
 export function PlatformLoginPage() {
+  const queryClient = useQueryClient();
   const [form, setForm] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
@@ -160,10 +165,17 @@ export function PlatformLoginPage() {
     setError("");
     setPending(true);
     try {
-      await sendData<PlatformPrincipal>("post", "/platform/auth/login", form);
-      navigate("/platform", true);
+      const principal = await sendData<PlatformPrincipal>("post", "/platform/auth/login", form);
+      queryClient.setQueryData(["platform-principal"], principal);
+      showToast({
+        title: "Login successful",
+        message: `Welcome back, ${principal.fullName}.`,
+      });
+      navigate(platformDashboardPath, true);
     } catch (caught) {
-      setError(errorMessage(caught));
+      const message = errorMessage(caught);
+      setError(message);
+      showToast({ title: "Login failed", message, tone: "error", durationMs: 10_000 });
     } finally {
       setPending(false);
     }
@@ -172,7 +184,7 @@ export function PlatformLoginPage() {
     <LoginFrame
       platform
       title="Platform control"
-      description="This login is separate from every pharmacy tenant."
+      description="Only Platform Super Admin and Platform Admin accounts can sign in here."
     >
       <form className="space-y-4" onSubmit={(event) => void submit(event)}>
         <Field label="Platform email">
@@ -198,7 +210,7 @@ export function PlatformLoginPage() {
         {error ? <p className="text-sm font-semibold text-rose-700">{error}</p> : null}
         <button className="btn-primary w-full" disabled={pending}>
           <ShieldCheck size={17} />
-          {pending ? "Signing inâ€¦" : "Sign in securely"}
+          {pending ? "Signing in..." : "Sign in securely"}
         </button>
       </form>
     </LoginFrame>

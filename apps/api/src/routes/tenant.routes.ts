@@ -1,4 +1,4 @@
-﻿import { MembershipStatus, TenantRole } from "@prisma/client";
+import { MembershipStatus, TenantRole } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import type { AuthService } from "../auth/auth.types.js";
@@ -61,6 +61,10 @@ export function createTenantRouter(
         accentColor: color,
         invoiceFooter: z.string().trim().max(500).optional(),
         supportContact: z.string().trim().max(180).optional(),
+        invoiceTitle: z.string().trim().min(2).max(120).default("SALES INVOICE"),
+        invoicePaperSize: z.enum(["A4", "A5", "THERMAL_80MM"]).default("A4"),
+        invoiceShowLogo: z.boolean().default(true),
+        pharmacistDiscountPercent: z.number().min(0).max(100).default(0),
       })
       .parse(request.body);
     response.json({
@@ -72,6 +76,50 @@ export function createTenantRouter(
     });
   });
 
+  router.put("/branding", requirePermission("branding.manage"), async (request, response) => {
+    const body = z
+      .object({
+        displayName: z.string().trim().min(2).max(150),
+        logoUrl: z.url().max(1000).optional(),
+        primaryColor: color,
+        accentColor: color,
+        invoiceFooter: z.string().trim().max(500).optional(),
+        supportContact: z.string().trim().max(180).optional(),
+        invoiceTitle: z.string().trim().min(2).max(120).default("SALES INVOICE"),
+        invoicePaperSize: z.enum(["A4", "A5", "THERMAL_80MM"]).default("A4"),
+        invoiceShowLogo: z.boolean().default(true),
+        pharmacistDiscountPercent: z.number().min(0).max(100).default(0),
+      })
+      .parse(request.body);
+    response.json({
+      data: await service.updateBranding(
+        request.auth!,
+        body,
+        response.locals.requestId as string | undefined,
+      ),
+    });
+  });
+
+  router.post("/members", requirePermission("member.manage"), async (request, response) => {
+    const body = z
+      .object({
+        fullName: z.string().trim().min(2).max(150),
+        email: z.email().max(320).optional(),
+        username: z.string().trim().min(2).max(80),
+        password: z.string().min(12).max(256),
+        role: z.enum(TenantRole).exclude(["OWNER"]),
+        allBranches: z.boolean().default(false),
+        branchIds: z.array(uuid).max(100).default([]),
+      })
+      .parse(request.body);
+    response.status(201).json({
+      data: await service.createMember(
+        request.auth!,
+        body,
+        response.locals.requestId as string | undefined,
+      ),
+    });
+  });
   router.get("/members", requirePermission("member.read"), async (request, response) => {
     response.json({ data: await service.members(request.auth!) });
   });

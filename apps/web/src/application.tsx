@@ -1,19 +1,25 @@
-﻿import { useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { getData } from "./api/client";
 import { PlatformShell, TenantShell } from "./components/shell";
 import { ErrorState, LoadingState } from "./components/ui";
+import { platformDashboardPath, tenantLandingPath } from "./lib/auth-navigation";
 import { navigate, usePathname } from "./lib/navigation";
 import { AcceptInvitationPage, PlatformLoginPage, TenantLoginPage } from "./pages/login-pages";
 import {
   PlatformAuditPage,
-  PlatformOverviewPage,
   PlatformPlansPage,
   PlatformSupportPage,
   PlatformTenantDetailPage,
   PlatformTenantsPage,
   TenantOnboardingPage,
 } from "./pages/platform-pages";
+import {
+  PlatformAdministratorsPage,
+  PlatformBroadcastsPage,
+  PlatformOverviewPage,
+  PlatformSettingsPage,
+} from "./pages/platform-control-pages";
 import {
   AccountPage,
   DashboardPage,
@@ -27,6 +33,7 @@ import {
   StaffPage,
   TenantAuditPage,
 } from "./pages/tenant-pages";
+import { CustomersPage, LabPage, SuppliersPage } from "./pages/operations-pages";
 import type { PlatformPrincipal, TenantPrincipal, Workspace } from "./types";
 
 function PlatformApplication({ pathname }: { pathname: string }) {
@@ -40,16 +47,47 @@ function PlatformApplication({ pathname }: { pathname: string }) {
     if (pathname !== "/platform/login") navigate("/platform/login", true);
     return <PlatformLoginPage />;
   }
-  if (pathname === "/platform/login") navigate("/platform", true);
-  let page: React.ReactNode = <PlatformOverviewPage />;
-  if (pathname === "/platform/tenants") page = <PlatformTenantsPage />;
-  else if (pathname === "/platform/tenants/new") page = <TenantOnboardingPage />;
+  if (pathname === "/platform/login" || pathname === "/platform")
+    navigate(platformDashboardPath, true);
+  let page: React.ReactNode = <PlatformOverviewPage principal={principal.data} />;
+  if (pathname === "/platform/tenants") page = <PlatformTenantsPage principal={principal.data} />;
+  else if (pathname === "/platform/tenants/new")
+    page =
+      principal.data.role === "SUPER_ADMIN" ? (
+        <TenantOnboardingPage />
+      ) : (
+        <PlatformOverviewPage principal={principal.data} />
+      );
   else if (/^\/platform\/tenants\/[^/]+$/.test(pathname))
-    page = <PlatformTenantDetailPage tenantId={pathname.split("/").at(-1)!} />;
+    page = (
+      <PlatformTenantDetailPage tenantId={pathname.split("/").at(-1)!} principal={principal.data} />
+    );
   else if (pathname === "/platform/plans") page = <PlatformPlansPage principal={principal.data} />;
   else if (pathname === "/platform/support")
     page = <PlatformSupportPage principal={principal.data} />;
-  else if (pathname === "/platform/audit") page = <PlatformAuditPage />;
+  else if (pathname === "/platform/administrators")
+    page =
+      principal.data.role === "SUPER_ADMIN" ? (
+        <PlatformAdministratorsPage />
+      ) : (
+        <PlatformOverviewPage principal={principal.data} />
+      );
+  else if (pathname === "/platform/notifications")
+    page =
+      principal.data.role === "SUPER_ADMIN" ? (
+        <PlatformBroadcastsPage />
+      ) : (
+        <PlatformOverviewPage principal={principal.data} />
+      );
+  else if (pathname === "/platform/settings")
+    page = <PlatformSettingsPage principal={principal.data} />;
+  else if (pathname === "/platform/audit")
+    page =
+      principal.data.role === "SUPER_ADMIN" ? (
+        <PlatformAuditPage />
+      ) : (
+        <PlatformOverviewPage principal={principal.data} />
+      );
   return (
     <PlatformShell principal={principal.data} currentPath={pathname}>
       {page}
@@ -87,11 +125,16 @@ function TenantApplication({ pathname }: { pathname: string }) {
     if (pathname !== "/login") navigate("/login", true);
     return <TenantLoginPage />;
   }
-  if (pathname === "/login") navigate("/dashboard", true);
+  if (pathname === "/login") navigate(tenantLandingPath(principal.data.role), true);
   if (workspace.isLoading) return <LoadingState label="Loading tenant workspace" />;
   if (workspace.error || !workspace.data) return <ErrorState error={workspace.error} />;
   let page: React.ReactNode = <DashboardPage branch={branch} workspace={workspace.data} />;
-  if (pathname === "/products") page = <ProductsPage principal={principal.data} />;
+  if (pathname === "/products") page = <ProductsPage principal={principal.data} branch={branch} />;
+  else if (pathname === "/customers")
+    page = <CustomersPage workspace={workspace.data} principal={principal.data} />;
+  else if (pathname === "/suppliers") page = <SuppliersPage principal={principal.data} />;
+  else if (pathname === "/lab")
+    page = <LabPage branch={branch} workspace={workspace.data} principal={principal.data} />;
   else if (pathname === "/inventory")
     page = <InventoryPage branch={branch} workspace={workspace.data} principal={principal.data} />;
   else if (pathname === "/sales")

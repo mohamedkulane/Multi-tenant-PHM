@@ -36,12 +36,12 @@ model Product {
   createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  packages      ProductPackage[]
-  branchConfigs BranchProduct[]
-  batches       InventoryBatch[]
-  movements     StockMovement[]
-  receiptItems  InventoryReceiptItem[]
-  transferItems InventoryTransferItem[]
+  packages          ProductPackage[]
+  branchConfigs     BranchProduct[]
+  batches           InventoryBatch[]
+  movements         StockMovement[]
+  receiptItems      InventoryReceiptItem[]
+  transferItems     InventoryTransferItem[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, normalizedName])
@@ -120,13 +120,15 @@ model InventoryReceipt {
   tenantId          String   @map("tenant_id") @db.Uuid
   branchId          String   @map("branch_id") @db.Uuid
   supplierName      String?  @map("supplier_name") @db.VarChar(180)
+  supplierId        String?  @map("supplier_id") @db.Uuid
   referenceNumber   String?  @map("reference_number") @db.VarChar(100)
   idempotencyKey    String   @map("idempotency_key") @db.VarChar(120)
   receivedAt        DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
   actorMembershipId String   @map("actor_membership_id") @db.Uuid
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  items InventoryReceiptItem[]
+  items    InventoryReceiptItem[]
+  supplier Supplier?              @relation(fields: [tenantId, supplierId], references: [tenantId, id], onDelete: Restrict)
 
   @@unique([tenantId, id])
   @@unique([tenantId, idempotencyKey])

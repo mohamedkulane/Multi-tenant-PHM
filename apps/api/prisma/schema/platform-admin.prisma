@@ -75,14 +75,18 @@ model TenantSubscription {
 }
 
 model TenantBranding {
-  tenantId       String   @id @map("tenant_id") @db.Uuid
-  displayName    String   @map("display_name") @db.VarChar(150)
-  logoUrl        String?  @map("logo_url") @db.VarChar(1000)
-  primaryColor   String   @default("#174C3F") @map("primary_color") @db.Char(7)
-  accentColor    String   @default("#B8F39A") @map("accent_color") @db.Char(7)
-  invoiceFooter  String?  @map("invoice_footer") @db.VarChar(500)
-  supportContact String?  @map("support_contact") @db.VarChar(180)
-  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  tenantId                  String   @id @map("tenant_id") @db.Uuid
+  displayName               String   @map("display_name") @db.VarChar(150)
+  logoUrl                   String?  @map("logo_url") @db.VarChar(1000)
+  primaryColor              String   @default("#174C3F") @map("primary_color") @db.Char(7)
+  accentColor               String   @default("#B8F39A") @map("accent_color") @db.Char(7)
+  invoiceFooter             String?  @map("invoice_footer") @db.VarChar(500)
+  supportContact            String?  @map("support_contact") @db.VarChar(180)
+  invoiceTitle              String   @default("SALES INVOICE") @map("invoice_title") @db.VarChar(120)
+  invoicePaperSize          String   @default("A4") @map("invoice_paper_size") @db.VarChar(20)
+  invoiceShowLogo           Boolean  @default(true) @map("invoice_show_logo")
+  pharmacistDiscountPercent Decimal  @default(0) @map("pharmacist_discount_percent") @db.Decimal(5, 2)
+  updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("tenant_branding")
 }
@@ -127,3 +131,36 @@ model SupportSession {
   @@map("support_sessions")
 }
 
+model PlatformBroadcast {
+  id                 String      @id @default(uuid()) @db.Uuid
+  actorUserId        String      @map("actor_user_id") @db.Uuid
+  targetTenantId     String?     @map("target_tenant_id") @db.Uuid
+  targetBranchId     String?     @map("target_branch_id") @db.Uuid
+  targetMembershipId String?     @map("target_membership_id") @db.Uuid
+  targetRole         TenantRole? @map("target_role")
+  targetType         String      @map("target_type") @db.VarChar(30)
+  title              String      @db.VarChar(180)
+  message            String      @db.VarChar(500)
+  deliveryCount      Int         @default(0) @map("delivery_count")
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@index([targetTenantId, createdAt])
+  @@map("platform_broadcasts")
+}
+
+model PlatformBroadcastDelivery {
+  id           String    @id @default(uuid()) @db.Uuid
+  broadcastId  String    @map("broadcast_id") @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Uuid
+  branchId     String?   @map("branch_id") @db.Uuid
+  membershipId String    @map("membership_id") @db.Uuid
+  title        String    @db.VarChar(180)
+  message      String    @db.VarChar(500)
+  readAt       DateTime? @map("read_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([broadcastId, membershipId])
+  @@index([tenantId, membershipId, readAt, createdAt])
+  @@map("platform_broadcast_deliveries")
+}

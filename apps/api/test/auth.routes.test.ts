@@ -82,6 +82,16 @@ describe("authentication routes", () => {
     expect(response.body.error.code).toBe("AUTHENTICATION_REQUIRED");
   });
 
+  it("does not accept a platform cookie as a tenant session", async () => {
+    const authenticate = vi.fn<AuthService["authenticate"]>().mockResolvedValue(null);
+    const app = createApp({ authentication: fakeAuth({ authenticate }) });
+    const response = await request(app)
+      .get("/api/v1/auth/me")
+      .set("Cookie", "phms_platform_session=platform.user.secret");
+
+    expect(response.status).toBe(401);
+    expect(authenticate).toHaveBeenCalledWith(undefined);
+  });
   it("revokes the server session and clears the cookie on logout", async () => {
     const logout = vi.fn<AuthService["logout"]>().mockResolvedValue(undefined);
     const app = createApp({ authentication: fakeAuth({ logout }) });

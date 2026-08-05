@@ -28,6 +28,7 @@ function requireBranch(principal: AuthenticatedPrincipal, branchId: string) {
 export class PrismaNotificationService implements NotificationService {
   async list(principal: AuthenticatedPrincipal, branchId: string) {
     requireBranch(principal, branchId);
+    await this.scan(principal, branchId, 30);
     return withTenantContext(
       prisma,
       {
@@ -37,7 +38,7 @@ export class PrismaNotificationService implements NotificationService {
         branchId,
       },
       async (transaction) => {
-        const [items, unread] = await Promise.all([
+        const [systemItems, systemUnread, platformItems, platformUnread] = await Promise.all([
           transaction.notification.findMany({
             where: { tenantId: principal.tenantId, branchId },
             orderBy: { createdAt: "desc" },
@@ -46,8 +47,43 @@ export class PrismaNotificationService implements NotificationService {
           transaction.notification.count({
             where: { tenantId: principal.tenantId, branchId, readAt: null },
           }),
+          transaction.platformBroadcastDelivery.findMany({
+            where: {
+              tenantId: principal.tenantId,
+              membershipId: principal.membershipId,
+              OR: [{ branchId: null }, { branchId }],
+            },
+            orderBy: { createdAt: "desc" },
+            take: 100,
+          }),
+          transaction.platformBroadcastDelivery.count({
+            where: {
+              tenantId: principal.tenantId,
+              membershipId: principal.membershipId,
+              readAt: null,
+              OR: [{ branchId: null }, { branchId }],
+            },
+          }),
         ]);
-        return { unread, items };
+        const messages = platformItems.map((item) => ({
+          id: item.id,
+          tenantId: item.tenantId,
+          branchId: item.branchId,
+          type: "PLATFORM_MESSAGE",
+          fingerprint: `platform:${item.broadcastId}:${item.membershipId}`,
+          title: item.title,
+          message: item.message,
+          entityType: "platform_broadcast",
+          entityId: item.broadcastId,
+          metadata: { source: "PLATFORM" },
+          readAt: item.readAt,
+          readByMembershipId: item.readAt ? item.membershipId : null,
+          createdAt: item.createdAt,
+        }));
+        const items = [...systemItems, ...messages]
+          .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
+          .slice(0, 100);
+        return { unread: systemUnread + platformUnread, items };
       },
     );
   }
@@ -87,6 +123,7 @@ export class PrismaNotificationService implements NotificationService {
             JOIN public.products p ON p.tenant_id = bp.tenant_id AND p.id = bp.product_id
             LEFT JOIN public.inventory_batches b ON b.tenant_id = bp.tenant_id
               AND b.branch_id = bp.branch_id AND b.product_id = bp.product_id
+              AND b.expiry_date >= CURRENT_DATE
             WHERE bp.tenant_id = ${principal.tenantId}::uuid
               AND bp.branch_id = ${branchId}::uuid AND bp.active
             GROUP BY bp.product_id, p.name, bp.reorder_point_base_units
@@ -96,17 +133,27 @@ export class PrismaNotificationService implements NotificationService {
             name AS title,
             quantity::text || ' base units remaining' AS message,
             'product' AS entity_type, product_id::text AS entity_id
-          FROM stock WHERE quantity <= reorder_point_base_units
+          FROM stock WHERE reorder_point_base_units > 0 AND quantity <= reorder_point_base_units
           UNION ALL
           SELECT 'EXPIRING_BATCH', 'expiring:' || b.id::text,
-            p.name, 'Batch ' || b.batch_number || ' expires ' || b.expiry_date::text,
+            CASE
+              WHEN b.expiry_date < CURRENT_DATE THEN 'EXPIRED MEDICINE: ' || p.name
+              WHEN b.expiry_date = CURRENT_DATE THEN 'EXPIRES TODAY: ' || p.name
+              ELSE 'EXPIRING MEDICINE: ' || p.name
+            END,
+            CASE
+              WHEN b.expiry_date < CURRENT_DATE
+                THEN 'Batch ' || b.batch_number || ' expired on ' || b.expiry_date::text
+              WHEN b.expiry_date = CURRENT_DATE
+                THEN 'Batch ' || b.batch_number || ' expires today'
+              ELSE 'Batch ' || b.batch_number || ' expires ' || b.expiry_date::text
+            END,
             'inventory_batch', b.id::text
           FROM public.inventory_batches b
           JOIN public.products p ON p.tenant_id = b.tenant_id AND p.id = b.product_id
           WHERE b.tenant_id = ${principal.tenantId}::uuid
             AND b.branch_id = ${branchId}::uuid AND b.quantity_on_hand > 0
-            AND b.expiry_date BETWEEN CURRENT_DATE
-              AND CURRENT_DATE + ${expiryDays}::int
+            AND b.expiry_date <= CURRENT_DATE + ${expiryDays}::int
           UNION ALL
           SELECT 'OVERDUE_DEBT', 'overdue-debt:' || d.id::text,
             s.customer_name, d.remaining_amount::text || ' overdue',
@@ -120,9 +167,29 @@ export class PrismaNotificationService implements NotificationService {
         `);
         let created = 0;
         for (const alert of alerts) {
-          const result = await transaction.notification.createMany({
-            data: [
-              {
+          const existing = await transaction.notification.findUnique({
+            where: {
+              tenantId_fingerprint: {
+                tenantId: principal.tenantId,
+                fingerprint: alert.fingerprint,
+              },
+            },
+            select: { id: true },
+          });
+          if (existing) {
+            await transaction.notification.update({
+              where: { tenantId_id: { tenantId: principal.tenantId, id: existing.id } },
+              data: {
+                type: alert.type,
+                title: alert.title,
+                message: alert.message,
+                entityType: alert.entity_type,
+                entityId: alert.entity_id,
+              },
+            });
+          } else {
+            await transaction.notification.create({
+              data: {
                 tenantId: principal.tenantId,
                 branchId,
                 type: alert.type,
@@ -132,10 +199,9 @@ export class PrismaNotificationService implements NotificationService {
                 entityType: alert.entity_type,
                 entityId: alert.entity_id,
               },
-            ],
-            skipDuplicates: true,
-          });
-          created += result.count;
+            });
+            created += 1;
+          }
         }
         return { created };
       },
@@ -157,10 +223,29 @@ export class PrismaNotificationService implements NotificationService {
           tenantId_id: { tenantId: principal.tenantId, id: notificationId },
         },
       });
-      if (
-        !notification ||
-        (notification.branchId && !canAccessBranch(principal, notification.branchId))
-      ) {
+      if (!notification) {
+        const delivery = await transaction.platformBroadcastDelivery.findUnique({
+          where: { id: notificationId },
+        });
+        if (
+          !delivery ||
+          delivery.tenantId !== principal.tenantId ||
+          delivery.membershipId !== principal.membershipId ||
+          (delivery.branchId && !canAccessBranch(principal, delivery.branchId))
+        ) {
+          throw new AppError({
+            statusCode: 404,
+            code: "NOTIFICATION_NOT_FOUND",
+            message: "Notification not found",
+          });
+        }
+        if (delivery.readAt) return delivery;
+        return transaction.platformBroadcastDelivery.update({
+          where: { id: delivery.id },
+          data: { readAt: new Date() },
+        });
+      }
+      if (notification.branchId && !canAccessBranch(principal, notification.branchId)) {
         throw new AppError({
           statusCode: 404,
           code: "NOTIFICATION_NOT_FOUND",

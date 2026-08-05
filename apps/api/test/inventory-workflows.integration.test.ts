@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+﻿import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AuthenticatedPrincipal } from "../src/auth/auth.types.js";
@@ -231,26 +231,36 @@ describeDatabase("M3 live inventory workflows", () => {
     ).rejects.toMatchObject({ code: "BRANCH_ACCESS_DENIED" });
   });
 
-  it("writes expired stock to zero through an immutable movement", async () => {
-    await inventoryService.receive(principal, {
-      branchId: branchA,
-      idempotencyKey: `receipt:${randomUUID()}`,
-      lines: [
-        {
-          productId,
-          packageCode: "box",
-          packageQuantity: 1,
-          batchNumber: "BATCH-EXPIRED",
-          expiryDate: new Date("2020-01-01T00:00:00.000Z"),
-          unitCost: "1.000000",
-        },
-      ],
+  it("rejects receipts whose expiry date is already in the past", async () => {
+    await expect(
+      inventoryService.receive(principal, {
+        branchId: branchA,
+        idempotencyKey: `receipt:${randomUUID()}`,
+        lines: [
+          {
+            productId,
+            packageCode: "box",
+            packageQuantity: 1,
+            batchNumber: "BATCH-EXPIRED-REJECTED",
+            expiryDate: new Date("2020-01-01T00:00:00.000Z"),
+            unitCost: "1.000000",
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ code: "EXPIRY_DATE_IN_PAST" });
+  });
+
+  it("writes legacy expired stock to zero through an immutable movement", async () => {
+    expiredBatchId = randomUUID();
+    await adminTenant(tenantId, userId, membershipId, async (client) => {
+      await client.query(
+        `INSERT INTO public.inventory_batches
+          (id, tenant_id, branch_id, product_id, batch_number, expiry_date, unit_cost,
+           quantity_on_hand, updated_at)
+         VALUES ($1, $2, $3, $4, 'BATCH-EXPIRED', '2020-01-01', 1, 10, now())`,
+        [expiredBatchId, tenantId, branchA, productId],
+      );
     });
-    const stock = (await inventoryService.listStock(principal, branchA)) as Array<{
-      id: string;
-      batchNumber: string;
-    }>;
-    expiredBatchId = stock.find(({ batchNumber }) => batchNumber === "BATCH-EXPIRED")!.id;
     const movement = (await inventoryService.writeOffExpired(principal, {
       branchId: branchA,
       batchId: expiredBatchId,

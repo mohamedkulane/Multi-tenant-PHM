@@ -24,9 +24,16 @@ describe("branch authorization", () => {
     expect(canAccessBranch(principal, "66666666-6666-4666-8666-666666666666")).toBe(false);
   });
 
-  it("allows every branch only when the membership has allBranches", () => {
-    expect(
-      canAccessBranch({ ...principal, allBranches: true }, "66666666-6666-4666-8666-666666666666"),
-    ).toBe(true);
+  it("allows all branches only for OWNER or ADMIN, never ordinary staff", () => {
+    const otherBranch = "66666666-6666-4666-8666-666666666666";
+    expect(canAccessBranch({ ...principal, role: "CASHIER", allBranches: true }, otherBranch)).toBe(
+      false,
+    );
+    expect(canAccessBranch({ ...principal, role: "ADMIN", allBranches: true }, otherBranch)).toBe(
+      true,
+    );
+    expect(canAccessBranch({ ...principal, role: "OWNER", allBranches: true }, otherBranch)).toBe(
+      true,
+    );
   });
 });

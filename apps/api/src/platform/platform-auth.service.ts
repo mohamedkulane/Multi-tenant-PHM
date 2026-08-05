@@ -12,6 +12,7 @@ import type {
 import { createPlatformToken, parsePlatformToken } from "./platform-token.js";
 
 const sessionDurationMs = env.SESSION_TTL_HOURS * 60 * 60 * 1000;
+const allowedPlatformLoginRoles = new Set(["SUPER_ADMIN", "ADMIN"]);
 const invalidCredentials = () =>
   new AppError({
     statusCode: 401,
@@ -51,6 +52,7 @@ export class PrismaPlatformAuthService implements PlatformAuthService {
         !user?.email ||
         user.status !== "ACTIVE" ||
         !access?.active ||
+        !allowedPlatformLoginRoles.has(access.role) ||
         !(await verifyPassword(user.passwordHash, input.password))
       ) {
         throw invalidCredentials();
@@ -114,7 +116,13 @@ export class PrismaPlatformAuthService implements PlatformAuthService {
         }),
         transaction.platformUser.findUnique({ where: { userId } }),
       ]);
-      if (!user?.email || user.status !== "ACTIVE" || !access?.active) return null;
+      if (
+        !user?.email ||
+        user.status !== "ACTIVE" ||
+        !access?.active ||
+        !allowedPlatformLoginRoles.has(access.role)
+      )
+        return null;
       if (Date.now() - session.lastSeenAt.getTime() > 5 * 60 * 1000) {
         await transaction.platformSession.update({
           where: { id: session.id },

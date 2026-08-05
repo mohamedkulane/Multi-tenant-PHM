@@ -17,6 +17,7 @@ export interface ReceiptLineInput {
 export interface ReceiveInventoryInput {
   branchId: string;
   supplierName?: string | undefined;
+  supplierId?: string | undefined;
   referenceNumber?: string | undefined;
   idempotencyKey: string;
   receivedAt?: Date | undefined;
@@ -95,9 +96,12 @@ function requireBranchAccess(principal: AuthenticatedPrincipal, branchId: string
   }
 }
 
-function serializeMovement<T extends { quantityDelta: bigint; balanceAfter: bigint }>(movement: T) {
+export function serializeInventoryMovement<
+  T extends { id: bigint; quantityDelta: bigint; balanceAfter: bigint },
+>(movement: T) {
   return {
     ...movement,
+    id: movement.id.toString(),
     quantityDelta: movement.quantityDelta.toString(),
     balanceAfter: movement.balanceAfter.toString(),
   };
@@ -186,12 +190,25 @@ async function updateBalanceAndMove(
   return movement;
 }
 
-function ensureFutureOrCurrentExpiry(expiryDate: Date) {
+export function ensureReceivableExpiry(expiryDate: Date, now = new Date()) {
   if (Number.isNaN(expiryDate.getTime())) {
     throw new AppError({
       statusCode: 400,
       code: "INVALID_EXPIRY_DATE",
       message: "Expiry date is invalid",
+    });
+  }
+  const expiryDay = Date.UTC(
+    expiryDate.getUTCFullYear(),
+    expiryDate.getUTCMonth(),
+    expiryDate.getUTCDate(),
+  );
+  const businessDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  if (expiryDay < businessDay) {
+    throw new AppError({
+      statusCode: 400,
+      code: "EXPIRY_DATE_IN_PAST",
+      message: "Expired stock cannot be received. Use a current or future expiry date.",
     });
   }
 }
@@ -301,7 +318,7 @@ export class PrismaInventoryService implements InventoryService {
             createdAt: true,
           },
         });
-        return movements.map(serializeMovement);
+        return movements.map(serializeInventoryMovement);
       },
     );
   }
@@ -319,7 +336,7 @@ export class PrismaInventoryService implements InventoryService {
         message: "At least one receipt line is required",
       });
     }
-    input.lines.forEach((line) => ensureFutureOrCurrentExpiry(line.expiryDate));
+    input.lines.forEach((line) => ensureReceivableExpiry(line.expiryDate));
 
     return withTenantContext(
       prisma,
@@ -341,13 +358,29 @@ export class PrismaInventoryService implements InventoryService {
         });
         if (existing) return { ...existing, replayed: true };
 
+        const supplier = input.supplierId
+          ? await transaction.supplier.findUnique({
+              where: {
+                tenantId_id: { tenantId: principal.tenantId, id: input.supplierId },
+              },
+            })
+          : null;
+        if (input.supplierId && (!supplier || !supplier.active)) {
+          throw new AppError({
+            statusCode: 404,
+            code: "SUPPLIER_NOT_FOUND",
+            message: "Active supplier not found",
+          });
+        }
+
         const receipt = await transaction.inventoryReceipt.create({
           data: {
             tenantId: principal.tenantId,
             branchId: input.branchId,
             idempotencyKey: input.idempotencyKey,
             actorMembershipId: principal.membershipId,
-            ...(input.supplierName ? { supplierName: input.supplierName.trim() } : {}),
+            supplierId: supplier?.id ?? null,
+            supplierName: supplier?.name ?? input.supplierName?.trim() ?? null,
             ...(input.referenceNumber ? { referenceNumber: input.referenceNumber.trim() } : {}),
             ...(input.receivedAt ? { receivedAt: input.receivedAt } : {}),
           },
@@ -468,7 +501,7 @@ export class PrismaInventoryService implements InventoryService {
             },
           },
         });
-        if (existing) return { ...serializeMovement(existing), replayed: true };
+        if (existing) return { ...serializeInventoryMovement(existing), replayed: true };
 
         const batch = await lockBatch(transaction, principal.tenantId, input.batchId);
         if (batch.branch_id !== input.branchId) {
@@ -500,7 +533,7 @@ export class PrismaInventoryService implements InventoryService {
             metadata: { direction: input.direction },
           },
         });
-        return { ...serializeMovement(movement), replayed: false };
+        return { ...serializeInventoryMovement(movement), replayed: false };
       },
     );
   }
@@ -528,7 +561,7 @@ export class PrismaInventoryService implements InventoryService {
             },
           },
         });
-        if (existing) return { ...serializeMovement(existing), replayed: true };
+        if (existing) return { ...serializeInventoryMovement(existing), replayed: true };
 
         const batch = await lockBatch(transaction, principal.tenantId, input.batchId);
         if (batch.branch_id !== input.branchId) {
@@ -573,7 +606,7 @@ export class PrismaInventoryService implements InventoryService {
             metadata: { movementId: movement.id.toString() },
           },
         });
-        return { ...serializeMovement(movement), replayed: false };
+        return { ...serializeInventoryMovement(movement), replayed: false };
       },
     );
   }

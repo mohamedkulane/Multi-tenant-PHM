@@ -1,4 +1,4 @@
-﻿import request from "supertest";
+import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import type { AuthService, AuthenticatedPrincipal } from "../src/auth/auth.types.js";
@@ -80,7 +80,7 @@ function service() {
   vi.spyOn(workspace, "updateMember").mockResolvedValue({
     id: "10000000-0000-4000-8000-000000000007",
     role: "MANAGER",
-    allBranches: true,
+    allBranches: false,
   } as never);
   vi.spyOn(workspace, "updateTenantSettings").mockResolvedValue({
     tenant: { id: principal.tenantId, name: "Route Health" },
@@ -113,8 +113,8 @@ describe("tenant workspace routes", () => {
         email: "cashier@example.test",
         username: "cashier",
         role: "CASHIER",
-        allBranches: true,
-        branchIds: [],
+        allBranches: false,
+        branchIds: ["10000000-0000-4000-8000-000000000005"],
       });
 
     expect(response.status).toBe(201);
@@ -148,7 +148,11 @@ describe("tenant workspace routes", () => {
     const response = await request(createApp({ authentication, tenantWorkspace: service() }))
       .patch("/api/v1/tenant/members/10000000-0000-4000-8000-000000000007")
       .set("Cookie", "phms_session=test")
-      .send({ role: "MANAGER", allBranches: true, branchIds: [] });
+      .send({
+        role: "MANAGER",
+        allBranches: false,
+        branchIds: ["10000000-0000-4000-8000-000000000005"],
+      });
 
     expect(response.status).toBe(200);
     expect(response.body.data.role).toBe("MANAGER");

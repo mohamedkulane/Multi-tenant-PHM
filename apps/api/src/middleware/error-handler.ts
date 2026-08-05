@@ -1,6 +1,5 @@
-﻿import type { ErrorRequestHandler } from "express";
+import type { ErrorRequestHandler } from "express";
 import { ZodError } from "zod";
-import { env } from "../config/env.js";
 import { AppError } from "../errors/app-error.js";
 import { logger } from "../lib/logger.js";
 
@@ -45,7 +44,7 @@ export const errorHandler: ErrorRequestHandler = (error, request, response, next
     response.status(error.statusCode).json({
       error: {
         code: error.code,
-        message: error.message,
+        message: error.statusCode >= 500 ? "An unexpected error occurred" : error.message,
         ...(error.details === undefined ? {} : { details: error.details }),
       },
       requestId,
@@ -58,12 +57,7 @@ export const errorHandler: ErrorRequestHandler = (error, request, response, next
   response.status(500).json({
     error: {
       code: "INTERNAL_ERROR",
-      message:
-        env.NODE_ENV === "production"
-          ? "An unexpected error occurred"
-          : error instanceof Error
-            ? error.message
-            : "An unexpected error occurred",
+      message: "An unexpected error occurred",
     },
     requestId,
   });

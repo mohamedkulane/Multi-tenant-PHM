@@ -26,6 +26,7 @@ const checkoutSchema = z.object({
   branchId: uuid,
   customerName: z.string().trim().min(1).max(180),
   customerPhone: z.string().trim().max(40).optional(),
+  customerId: uuid.optional(),
   discount: money.default("0"),
   amountPaid: money.default("0"),
   paymentMethod: paymentMethod.optional(),

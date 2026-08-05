@@ -1,8 +1,9 @@
-﻿import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getData } from "./api/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getData, sendData } from "./api/client";
 import { Application } from "./application";
+import { ToastViewport } from "./components/toast";
 
 vi.mock("./api/client", () => ({
   getData: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock("./api/client", () => ({
 }));
 
 const mockedGetData = vi.mocked(getData);
+const mockedSendData = vi.mocked(sendData);
 
 function renderApplication() {
   const client = new QueryClient({
@@ -21,13 +23,16 @@ function renderApplication() {
   });
   return render(
     <QueryClientProvider client={client}>
+      <ToastViewport />
       <Application />
     </QueryClientProvider>,
   );
 }
 
 describe("PHMS application entry points", () => {
+  afterEach(cleanup);
   beforeEach(() => {
+    vi.clearAllMocks();
     mockedGetData.mockRejectedValue(new Error("No active session"));
   });
 
@@ -43,5 +48,96 @@ describe("PHMS application entry points", () => {
     renderApplication();
     expect(await screen.findByRole("heading", { name: "Platform control" })).toBeInTheDocument();
     expect(screen.getByLabelText("Platform email")).toBeInTheDocument();
+  });
+
+  it("redirects a tenant login immediately and shows a success toast", async () => {
+    window.history.replaceState({}, "", "/login");
+    mockedGetData.mockImplementation(async (url: string) => {
+      await Promise.resolve();
+      if (url === "/auth/me") throw new Error("No active session");
+      if (url === "/tenant/workspace") {
+        return {
+          tenant: {
+            id: "10000000-0000-4000-8000-000000000001",
+            name: "Route Pharmacy",
+            slug: "route-pharmacy",
+            status: "ACTIVE",
+            planCode: "starter",
+            timezone: "Africa/Nairobi",
+            currencyCode: "KES",
+          },
+          branches: [
+            {
+              id: "10000000-0000-4000-8000-000000000002",
+              name: "Main",
+              code: "MAIN",
+              timezone: "Africa/Nairobi",
+              active: true,
+            },
+          ],
+          branding: null,
+          subscription: null,
+        };
+      }
+      if (url.startsWith("/reports/dashboard")) return { cards: {} };
+      return [];
+    });
+    mockedSendData.mockResolvedValue({
+      sessionId: "10000000-0000-4000-8000-000000000003",
+      tenantId: "10000000-0000-4000-8000-000000000001",
+      tenantName: "Route Pharmacy",
+      userId: "10000000-0000-4000-8000-000000000004",
+      fullName: "Tenant Owner",
+      membershipId: "10000000-0000-4000-8000-000000000005",
+      username: "owner",
+      role: "OWNER",
+      allBranches: true,
+      branchIds: [],
+    });
+    renderApplication();
+
+    fireEvent.change(await screen.findByLabelText("Organization"), {
+      target: { value: "route-pharmacy" },
+    });
+    fireEvent.change(screen.getByLabelText("Username"), { target: { value: "owner" } });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "StrongPassword123!" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByText("Login successful")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Maalin wanaagsan, Route Pharmacy" }),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(window.location.pathname).toBe("/dashboard"));
+  });
+
+  it("redirects a platform login immediately and shows a success toast", async () => {
+    window.history.replaceState({}, "", "/platform/login");
+    mockedGetData.mockImplementation(async (url: string) => {
+      await Promise.resolve();
+      if (url === "/platform/auth/me") throw new Error("No active session");
+      return [];
+    });
+    mockedSendData.mockResolvedValue({
+      sessionId: "20000000-0000-4000-8000-000000000001",
+      userId: "20000000-0000-4000-8000-000000000002",
+      email: "admin@example.test",
+      fullName: "Platform Owner",
+      role: "SUPER_ADMIN",
+    });
+    renderApplication();
+
+    fireEvent.change(await screen.findByLabelText("Platform email"), {
+      target: { value: "admin@example.test" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "StrongPassword123!" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in securely" }));
+
+    expect(await screen.findByText("Login successful")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Platform overview" })).toBeInTheDocument();
+    await waitFor(() => expect(window.location.pathname).toBe("/platform/dashboard"));
   });
 });

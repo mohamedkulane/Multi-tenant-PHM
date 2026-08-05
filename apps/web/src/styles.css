@@ -1,4 +1,4 @@
-﻿@import "tailwindcss";
+@import "tailwindcss";
 
 :root {
   font-family:
@@ -13,6 +13,8 @@
   background: #edf3f1;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  --tenant-primary: #0d2926;
+  --tenant-accent: #b8f39a;
 }
 
 * {
@@ -34,7 +36,7 @@ textarea {
 
 ::selection {
   color: #ffffff;
-  background: #2e7468;
+  background: var(--tenant-primary);
 }
 
 button,
@@ -61,8 +63,8 @@ button:disabled {
     box-shadow 150ms ease;
 }
 .input:focus {
-  border-color: #059669;
-  box-shadow: 0 0 0 3px rgb(16 185 129 / 0.13);
+  border-color: var(--tenant-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tenant-primary) 18%, transparent);
 }
 .btn-primary,
 .btn-secondary {
@@ -78,12 +80,12 @@ button:disabled {
   transition: 150ms ease;
 }
 .btn-primary {
-  border: 1px solid #0d2926;
-  background: #0d2926;
+  border: 1px solid var(--tenant-primary);
+  background: var(--tenant-primary);
   color: #fff;
 }
 .btn-primary:hover {
-  background: #174c3f;
+  background: color-mix(in srgb, var(--tenant-primary) 82%, white);
 }
 .btn-secondary {
   border: 1px solid #cbd5e1;
@@ -132,4 +134,280 @@ button:disabled {
   border-bottom: 1px solid #e2e8f0;
   background: #f8fafc;
   padding: 0.875rem 1rem;
+}
+
+.pagination-button {
+  min-width: 2.85rem;
+  border: 1px solid #d7dee8;
+  border-right-width: 0;
+  background: #fff;
+  padding: 0.65rem 0.85rem;
+  color: #475569;
+  font-size: 0.875rem;
+  transition: 150ms ease;
+}
+.pagination-button:last-child {
+  border-right-width: 1px;
+}
+.pagination-button:hover:not(:disabled):not(.is-active) {
+  background: #f8fafc;
+  color: var(--tenant-primary);
+}
+.pagination-button.is-active {
+  border-color: var(--tenant-primary);
+  background: var(--tenant-primary);
+  color: #fff;
+}
+.pagination-button:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.lab-report-print-sheet {
+  display: none;
+}
+
+@media print {
+  .lab-report-print-sheet {
+    display: block !important;
+    font-size: 11px;
+  }
+  .lab-print-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    border-bottom: 3px solid var(--tenant-primary);
+    padding-bottom: 18px;
+  }
+  .lab-print-brand {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+  .lab-print-brand img,
+  .lab-print-mark {
+    width: 58px;
+    height: 58px;
+    object-fit: contain;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+  }
+  .lab-print-mark {
+    display: grid;
+    place-items: center;
+    background: var(--tenant-primary);
+    color: white;
+    font-size: 32px;
+    font-weight: 700;
+  }
+  .lab-print-brand h1 {
+    margin: 0 0 4px;
+    font-size: 22px;
+    line-height: 1.1;
+  }
+  .lab-print-brand p,
+  .lab-print-title p,
+  .lab-print-title span {
+    margin: 2px 0;
+    color: #475569;
+  }
+  .lab-print-title {
+    text-align: right;
+  }
+  .lab-print-title h2 {
+    margin: 3px 0 6px;
+    font-size: 18px;
+  }
+  .lab-print-title strong {
+    display: block;
+    font-size: 12px;
+  }
+  .lab-print-patient {
+    display: grid;
+    grid-template-columns: 2fr 0.7fr 0.8fr 1.4fr 1.2fr 1fr;
+    margin: 20px 0;
+    border: 1px solid #cbd5e1;
+  }
+  .lab-print-patient div {
+    padding: 10px;
+    border-right: 1px solid #e2e8f0;
+  }
+  .lab-print-patient div:last-child {
+    border-right: 0;
+  }
+  .lab-print-patient span,
+  .lab-print-notes span {
+    display: block;
+    margin-bottom: 4px;
+    color: #64748b;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  .lab-print-section h3,
+  .lab-print-finance h3 {
+    margin: 0 0 8px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .lab-print-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .lab-print-table th {
+    background: #e8f2ef;
+    color: #0f172a;
+    font-size: 9px;
+    text-transform: uppercase;
+  }
+  .lab-print-table th,
+  .lab-print-table td {
+    border: 1px solid #cbd5e1;
+    padding: 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .lab-print-table .money-cell {
+    text-align: right;
+    white-space: nowrap;
+  }
+  .lab-result {
+    display: inline-block;
+    border: 1px solid #94a3b8;
+    border-radius: 999px;
+    padding: 2px 7px;
+    font-size: 9px;
+    font-weight: 700;
+  }
+  .lab-result-positive {
+    border-color: #be123c;
+    color: #be123c;
+  }
+  .lab-result-negative {
+    border-color: #047857;
+    color: #047857;
+  }
+  .lab-print-notes {
+    margin-top: 14px;
+    border: 1px solid #cbd5e1;
+    padding: 10px;
+  }
+  .lab-print-notes p {
+    margin: 0;
+    white-space: pre-wrap;
+  }
+  .lab-print-finance {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 28px;
+    margin-top: 18px;
+    align-items: start;
+  }
+  .lab-print-finance > div > p,
+  .lab-print-finance dl > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0;
+    padding: 7px 0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .lab-print-finance dl {
+    margin: 0;
+    border: 1px solid #cbd5e1;
+    padding: 6px 12px;
+  }
+  .lab-print-finance dd {
+    margin: 0;
+    font-weight: 700;
+  }
+  .lab-print-total {
+    font-size: 13px;
+  }
+  .lab-print-balance {
+    margin: 4px -12px -6px !important;
+    padding: 10px 12px !important;
+    color: white;
+    border: 0 !important;
+  }
+  .lab-print-balance.due {
+    background: #be123c;
+  }
+  .lab-print-balance.paid {
+    background: #047857;
+  }
+  .lab-print-signatures {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 70px;
+    margin-top: 48px;
+  }
+  .lab-print-signatures div {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    color: #475569;
+  }
+  .lab-print-signatures i {
+    display: block;
+    border-top: 1px solid #64748b;
+  }
+  .lab-report-print-sheet footer {
+    margin-top: 28px;
+    border-top: 1px solid #cbd5e1;
+    padding-top: 10px;
+    color: #64748b;
+    text-align: center;
+  }
+}
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+  body * {
+    visibility: hidden !important;
+  }
+  .invoice-print-sheet,
+  .invoice-print-sheet * {
+    visibility: visible !important;
+  }
+  .invoice-print-sheet {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    color: #0f172a !important;
+    background: white !important;
+  }
+}
+
+.invoice-action-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  box-shadow: 0 8px 22px rgb(15 23 42 / 8%);
+}
+
+@media (max-width: 480px) {
+  .invoice-action-bar > button {
+    flex: 1 1 calc(50% - 0.25rem);
+  }
+}
+
+@media print {
+  .dialog-panel {
+    max-height: none !important;
+    overflow: visible !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+  .dialog-scroll {
+    overflow: visible !important;
+  }
 }

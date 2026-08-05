@@ -1,4 +1,4 @@
-﻿import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Pencil, Plus, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { errorMessage, getData, sendData } from "../api/client";
@@ -22,8 +22,10 @@ type Row = Record<string, unknown>;
 const text = (value: unknown) =>
   typeof value === "string" || typeof value === "number" || typeof value === "boolean"
     ? String(value)
-    : "—";
+    : "-";
 const list = (value: unknown): Row[] => (Array.isArray(value) ? (value as Row[]) : []);
+const record = (value: unknown): Row =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as Row) : {};
 
 export function PlatformOverviewPage() {
   const tenants = useQuery({
@@ -110,7 +112,7 @@ function TenantTable({ rows }: { rows: Row[] }) {
   );
 }
 
-export function PlatformTenantsPage() {
+export function PlatformTenantsPage({ principal }: { principal: PlatformPrincipal }) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
   const query = useQuery({
@@ -130,9 +132,11 @@ export function PlatformTenantsPage() {
         title="Organizations"
         description="Search, inspect, onboard, and control every isolated tenant from the platform control plane."
         actions={
-          <Link className="btn-primary" to="/platform/tenants/new">
-            <Plus size={17} /> Onboard tenant
-          </Link>
+          principal.role === "SUPER_ADMIN" ? (
+            <Link className="btn-primary" to="/platform/tenants/new">
+              <Plus size={17} /> Onboard tenant
+            </Link>
+          ) : undefined
         }
       />
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
@@ -286,9 +290,19 @@ export function TenantOnboardingPage() {
   );
 }
 
-export function PlatformTenantDetailPage({ tenantId }: { tenantId: string }) {
+export function PlatformTenantDetailPage({
+  tenantId,
+  principal,
+}: {
+  tenantId: string;
+  principal: PlatformPrincipal;
+}) {
   const client = useQueryClient();
-  const [dialog, setDialog] = useState<"plan" | "branding" | null>(null);
+  const isSuperAdmin = principal.role === "SUPER_ADMIN";
+  const [dialog, setDialog] = useState<"plan" | "branding" | "renew" | null>(null);
+  const [userControl, setUserControl] = useState<Row | null>(null);
+  const [userReason, setUserReason] = useState("");
+  const [renewForm, setRenewForm] = useState({ months: "1", paymentReference: "", note: "" });
   const [planForm, setPlanForm] = useState({
     planCode: "starter",
     maxBranches: "",
@@ -311,6 +325,30 @@ export function PlatformTenantDetailPage({ tenantId }: { tenantId: string }) {
   const plans = useQuery({
     queryKey: ["platform-plans"],
     queryFn: () => getData<Row[]>("/platform/plans"),
+  });
+  const tenantUsers = useQuery({
+    queryKey: ["platform-tenant-users", tenantId],
+    queryFn: () => getData<Row[]>(`/platform/tenants/${tenantId}/users`),
+    enabled: isSuperAdmin,
+  });
+  const userStatus = useMutation({
+    mutationFn: () =>
+      sendData(
+        "patch",
+        `/platform/tenants/${tenantId}/users/${text(userControl?.["membershipId"])}/status`,
+        {
+          active: userControl?.["status"] !== "ACTIVE",
+          reason: userReason,
+        },
+      ),
+    onSuccess: async () => {
+      setUserControl(null);
+      setUserReason("");
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["platform-tenant-users", tenantId] }),
+        client.invalidateQueries({ queryKey: ["platform-tenant", tenantId] }),
+      ]);
+    },
   });
   const status = useMutation({
     mutationFn: (value: string) =>
@@ -340,6 +378,19 @@ export function PlatformTenantDetailPage({ tenantId }: { tenantId: string }) {
       await client.invalidateQueries({ queryKey: ["platform-tenant", tenantId] });
     },
   });
+  const renewSubscription = useMutation({
+    mutationFn: () =>
+      sendData("post", `/platform/tenants/${tenantId}/subscription/renew`, {
+        months: Number(renewForm.months),
+        paymentReference: renewForm.paymentReference || undefined,
+        note: renewForm.note || undefined,
+      }),
+    onSuccess: async () => {
+      setDialog(null);
+      setRenewForm({ months: "1", paymentReference: "", note: "" });
+      await client.invalidateQueries({ queryKey: ["platform-tenant", tenantId] });
+    },
+  });
   const saveBranding = useMutation({
     mutationFn: () =>
       sendData("put", `/platform/tenants/${tenantId}/branding`, {
@@ -360,6 +411,7 @@ export function PlatformTenantDetailPage({ tenantId }: { tenantId: string }) {
   const tenant = query.data!;
   const branding = (tenant["branding"] ?? {}) as Row;
   const subscription = (tenant["subscription"] ?? {}) as Row;
+  const usage = record(tenant["usage"]);
   const openPlan = () => {
     setPlanForm({
       planCode: text(subscription["planCode"] ?? tenant["planCode"]),
@@ -386,25 +438,32 @@ export function PlatformTenantDetailPage({ tenantId }: { tenantId: string }) {
       <PageHeader
         eyebrow="Tenant detail"
         title={text(tenant["name"])}
-        description={`${text(tenant["slug"])} · ${text(tenant["timezone"])} · ${text(tenant["currencyCode"])}`}
+        description={`${text(tenant["slug"])}  |  ${text(tenant["timezone"])}  |  ${text(tenant["currencyCode"])}`}
         actions={
-          <>
-            <button className="btn-secondary" onClick={openPlan}>
-              Change plan
-            </button>
-            <button className="btn-secondary" onClick={openBranding}>
-              <Pencil size={15} /> Branding
-            </button>
-            <select
-              className="input"
-              value={text(tenant["status"])}
-              onChange={(event) => status.mutate(event.target.value)}
-            >
-              {["TRIAL", "ACTIVE", "SUSPENDED", "CANCELLED"].map((item) => (
-                <option key={item}>{item}</option>
-              ))}
-            </select>
-          </>
+          isSuperAdmin ? (
+            <>
+              <button className="btn-primary" onClick={() => setDialog("renew")}>
+                Renew subscription
+              </button>
+              <button className="btn-secondary" onClick={openPlan}>
+                Change plan
+              </button>
+              <button className="btn-secondary" onClick={openBranding}>
+                <Pencil size={15} /> Branding
+              </button>
+              <select
+                className="input"
+                value={text(tenant["status"])}
+                onChange={(event) => status.mutate(event.target.value)}
+              >
+                {["TRIAL", "ACTIVE", "SUSPENDED", "CANCELLED"].map((item) => (
+                  <option key={item}>{item}</option>
+                ))}
+              </select>
+            </>
+          ) : (
+            <StatusBadge value="READ ONLY" />
+          )
         }
       />
       {status.error ? (
@@ -412,10 +471,40 @@ export function PlatformTenantDetailPage({ tenantId }: { tenantId: string }) {
           <ErrorState error={status.error} />
         </div>
       ) : null}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Stat label="Plan" value={text(subscription["planCode"] ?? tenant["planCode"])} />
-        <Stat label="Branches" value={list(tenant["branches"]).length} tone="blue" />
-        <Stat label="Active users" value={text(tenant["activeUsers"])} tone="amber" />
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <Stat
+          label="Subscription"
+          value={subscription["endsAt"] ? date(subscription["endsAt"]) : "No expiry"}
+          detail={
+            subscription["endsAt"] && new Date(text(subscription["endsAt"])) <= new Date()
+              ? "Expired — tenant login is locked"
+              : "Next renewal date"
+          }
+          tone={
+            subscription["endsAt"] && new Date(text(subscription["endsAt"])) <= new Date()
+              ? "rose"
+              : "emerald"
+          }
+        />
+        {(
+          [
+            ["Branches", "branches", "blue"],
+            ["Active users", "users", "amber"],
+            ["Products", "products", "emerald"],
+            ["Monthly sales", "monthlySales", "rose"],
+          ] as const
+        ).map(([label, key, tone]) => {
+          const item = record(usage[key]);
+          return (
+            <Stat
+              key={key}
+              label={label}
+              value={`${text(item["used"] ?? 0)} / ${text(item["limit"] ?? 0)}`}
+              detail="Used against effective plan limit"
+              tone={tone}
+            />
+          );
+        })}
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
         <Card title="Branches">
@@ -459,6 +548,142 @@ export function PlatformTenantDetailPage({ tenantId }: { tenantId: string }) {
           </dl>
         </Card>
       </div>
+      {isSuperAdmin ? (
+        <>
+          <Card
+            title="Tenant users and access"
+            description="Super Admin can suspend or restore a tenant membership. Disabling access revokes every active tenant session."
+            className="mt-6"
+          >
+            {tenantUsers.isLoading ? (
+              <LoadingState />
+            ) : tenantUsers.error ? (
+              <ErrorState error={tenantUsers.error} />
+            ) : (
+              <SimpleTable
+                rows={tenantUsers.data ?? []}
+                columns={[
+                  {
+                    label: "User",
+                    render: (row) => (
+                      <div>
+                        <p className="font-bold text-slate-950">{text(row["fullName"])}</p>
+                        <p className="text-xs text-slate-500">
+                          {text(row["username"])} / {text(row["email"])}
+                        </p>
+                      </div>
+                    ),
+                  },
+                  { label: "Role", render: (row) => <StatusBadge value={text(row["role"])} /> },
+                  { label: "Status", render: (row) => <StatusBadge value={text(row["status"])} /> },
+                  {
+                    label: "Branches",
+                    render: (row) =>
+                      row["allBranches"]
+                        ? "All branches"
+                        : list(row["branches"])
+                            .map((branch) => text(branch["name"]))
+                            .join(", ") || "None",
+                  },
+                  { label: "Sessions", render: (row) => text(row["activeSessions"] ?? 0) },
+                  { label: "Last active", render: (row) => date(row["lastSeenAt"]) },
+                  {
+                    label: "Action",
+                    render: (row) => (
+                      <button className="btn-secondary" onClick={() => setUserControl(row)}>
+                        {row["status"] === "ACTIVE" ? "Disable" : "Enable"}
+                      </button>
+                    ),
+                  },
+                ]}
+              />
+            )}
+          </Card>
+          <Dialog
+            open={Boolean(userControl)}
+            title={
+              userControl?.["status"] === "ACTIVE" ? "Disable tenant user" : "Enable tenant user"
+            }
+            description="This action is recorded in the immutable platform audit log."
+            onClose={() => setUserControl(null)}
+          >
+            <form
+              className="space-y-4 p-5"
+              onSubmit={(event) => {
+                event.preventDefault();
+                userStatus.mutate();
+              }}
+            >
+              <p className="text-sm text-slate-600">
+                Account: <strong>{text(userControl?.["fullName"])}</strong> /{" "}
+                {text(userControl?.["role"])}
+              </p>
+              <Field label="Audit reason (Sababta)">
+                <textarea
+                  className="input min-h-24"
+                  value={userReason}
+                  onChange={(event) => setUserReason(event.target.value)}
+                  required
+                />
+              </Field>
+              {userStatus.error ? (
+                <p className="text-sm text-rose-700">{errorMessage(userStatus.error)}</p>
+              ) : null}
+              <button className="btn-primary" disabled={userStatus.isPending}>
+                Confirm access change
+              </button>
+            </form>
+          </Dialog>{" "}
+        </>
+      ) : null}
+      <Dialog
+        open={dialog === "renew"}
+        title="Renew monthly subscription"
+        description="Extends access from the current expiry date, or from today if it already expired."
+        onClose={() => setDialog(null)}
+      >
+        <form
+          className="space-y-4 p-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            renewSubscription.mutate();
+          }}
+        >
+          <Field label="Months (Bilaha)">
+            <input
+              className="input"
+              type="number"
+              min="1"
+              max="36"
+              value={renewForm.months}
+              onChange={(event) => setRenewForm({ ...renewForm, months: event.target.value })}
+              required
+            />
+          </Field>
+          <Field label="Payment reference (Tixraaca lacagta)">
+            <input
+              className="input"
+              value={renewForm.paymentReference}
+              onChange={(event) =>
+                setRenewForm({ ...renewForm, paymentReference: event.target.value })
+              }
+            />
+          </Field>
+          <Field label="Note (Faahfaahin)">
+            <textarea
+              className="input min-h-24"
+              value={renewForm.note}
+              onChange={(event) => setRenewForm({ ...renewForm, note: event.target.value })}
+            />
+          </Field>
+          {renewSubscription.error ? (
+            <p className="text-sm text-rose-700">{errorMessage(renewSubscription.error)}</p>
+          ) : null}
+          <button className="btn-primary" disabled={renewSubscription.isPending}>
+            Confirm renewal
+          </button>
+        </form>
+      </Dialog>
       <Dialog
         open={dialog === "plan"}
         title="Change tenant plan"
@@ -934,7 +1159,7 @@ export function PlatformSupportPage({ principal }: { principal: PlatformPrincipa
                 .filter((tenant) => ["TRIAL", "ACTIVE"].includes(text(tenant["status"])))
                 .map((tenant) => (
                   <option key={text(tenant["id"])} value={text(tenant["id"])}>
-                    {text(tenant["name"])} · {text(tenant["slug"])}
+                    {text(tenant["name"])} | {text(tenant["slug"])}
                   </option>
                 ))}
             </select>
@@ -989,9 +1214,20 @@ export function PlatformSupportPage({ principal }: { principal: PlatformPrincipa
   );
 }
 export function PlatformAuditPage() {
+  const [search, setSearch] = useState("");
+  const [action, setAction] = useState("ALL");
   const query = useQuery({
     queryKey: ["platform-audit"],
     queryFn: () => getData<Row[]>("/platform/audit?take=250"),
+  });
+  const auditRows = query.data ?? [];
+  const actions = [...new Set(auditRows.map((row) => text(row["action"])))].sort();
+  const filtered = auditRows.filter((row) => {
+    const haystack =
+      `${text(row["action"])} ${text(row["entityType"])} ${text(row["entityId"])} ${text(row["targetTenantId"])} ${text(row["actorUserId"])}`.toLowerCase();
+    return (
+      haystack.includes(search.toLowerCase()) && (action === "ALL" || row["action"] === action)
+    );
   });
   return (
     <>
@@ -999,21 +1235,53 @@ export function PlatformAuditPage() {
         eyebrow="Compliance"
         title="Platform audit"
         description="Append-only platform lifecycle and support-access evidence."
-      />
+      />{" "}
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        <Stat label="Audit events" value={auditRows.length} />
+        <Stat label="Action types" value={actions.length} tone="blue" />
+        <Stat
+          label="Tenant-scoped events"
+          value={auditRows.filter((row) => Boolean(row["targetTenantId"])).length}
+          tone="amber"
+        />
+      </div>
       <Card>
+        <div className="action-bar">
+          <input
+            className="input max-w-md"
+            placeholder="Search action, entity, tenant, or actor"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <select
+            className="input max-w-64"
+            value={action}
+            onChange={(event) => setAction(event.target.value)}
+          >
+            <option value="ALL">All actions</option>
+            {actions.map((item) => (
+              <option key={item} value={item}>
+                {item.replaceAll("_", " ")}
+              </option>
+            ))}
+          </select>
+          <span className="ml-auto text-sm font-semibold text-slate-500">
+            {filtered.length} results
+          </span>
+        </div>
         {query.isLoading ? (
           <LoadingState />
         ) : query.error ? (
           <ErrorState error={query.error} />
         ) : (
           <SimpleTable
-            rows={query.data ?? []}
+            rows={filtered}
             columns={[
               { label: "Time", render: (row) => date(row["createdAt"]) },
               { label: "Action", render: (row) => <strong>{text(row["action"])}</strong> },
               {
                 label: "Entity",
-                render: (row) => `${text(row["entityType"])} Â· ${text(row["entityId"])}`,
+                render: (row) => `${text(row["entityType"])}  |  ${text(row["entityId"])}`,
               },
               { label: "Tenant", render: (row) => text(row["targetTenantId"]) },
               { label: "Actor", render: (row) => text(row["actorUserId"]) },

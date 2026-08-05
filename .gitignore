@@ -19,3 +19,4 @@ apps/api/prisma/migrations/**/migration_lock.toml
 *.local
 tmp/
 temp/
+.superdesign/tmp/

@@ -5,7 +5,7 @@ import { prisma } from "../database/prisma.js";
 import { setTransactionContext, withTenantContext } from "../database/tenant-context.js";
 import { AppError } from "../errors/app-error.js";
 import { canAccessBranch } from "../middleware/authorization.js";
-import { recordsToCsv } from "./csv.js";
+import { recordsToExcel } from "./excel.js";
 import { notificationService } from "./notification.service.js";
 import { reportService } from "./report.service.js";
 
@@ -243,8 +243,8 @@ export class PrismaJobService implements JobService {
                 : payload.reportType === "expenses"
                   ? await reportService.expenses(principal, range!)
                   : await reportService.margin(principal, range!);
-        const csv = recordsToCsv(rowsFromReport(report));
-        const content = Buffer.from(csv, "utf8");
+        const workbook = recordsToExcel(rowsFromReport(report), payload.reportType);
+        const content = Buffer.from(workbook, "utf8");
         const checksum = createHash("sha256").update(content).digest("hex");
         const artifact = await prisma.$transaction(async (transaction) => {
           await setTransactionContext(transaction, {
@@ -258,8 +258,8 @@ export class PrismaJobService implements JobService {
               tenantId: principal.tenantId,
               branchId: payload.branchId,
               jobId,
-              filename: `${payload.reportType}-${payload.from ?? "current"}-${payload.to ?? "current"}.csv`,
-              mimeType: "text/csv; charset=utf-8",
+              filename: `${payload.reportType}-${payload.from ?? "current"}-${payload.to ?? "current"}.xls`,
+              mimeType: "application/vnd.ms-excel; charset=utf-8",
               checksum,
               content,
               expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),

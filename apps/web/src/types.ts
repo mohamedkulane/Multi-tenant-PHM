@@ -1,4 +1,4 @@
-﻿export interface TenantPrincipal {
+export interface TenantPrincipal {
   sessionId: string;
   tenantId: string;
   tenantName: string;
@@ -17,7 +17,7 @@ export interface PlatformPrincipal {
   userId: string;
   email: string;
   fullName: string;
-  role: "SUPER_ADMIN" | "SUPPORT" | "AUDITOR";
+  role: "SUPER_ADMIN" | "ADMIN" | "SUPPORT" | "AUDITOR";
 }
 
 export interface Branch {
@@ -47,9 +47,15 @@ export interface Workspace {
     accentColor: string;
     invoiceFooter?: string | null;
     supportContact?: string | null;
+    invoiceTitle?: string;
+    invoicePaperSize?: "A4" | "A5" | "THERMAL_80MM";
+    invoiceShowLogo?: boolean;
+    pharmacistDiscountPercent?: number | string;
   } | null;
   subscription?: {
     planCode: string;
     overrides: Record<string, number>;
+    startsAt?: string;
+    endsAt?: string | null;
   } | null;
 }

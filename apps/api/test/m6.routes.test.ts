@@ -1,4 +1,4 @@
-﻿import type { TenantStatus } from "@prisma/client";
+import type { TenantStatus } from "@prisma/client";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
@@ -41,6 +41,15 @@ function platformAuth(role: PlatformPrincipal["role"] = "SUPER_ADMIN"): Platform
 
 function administration(): PlatformAdminService {
   return {
+    overview: vi.fn().mockResolvedValue({ cards: {}, charts: {}, alerts: [], recentAudit: [] }),
+    listPlatformUsers: vi.fn().mockResolvedValue([]),
+    createPlatformUser: vi.fn().mockResolvedValue({}),
+    updatePlatformUser: vi.fn().mockResolvedValue({}),
+    revokePlatformSessions: vi.fn().mockResolvedValue({ revoked: 0 }),
+    listTenantUsers: vi.fn().mockResolvedValue([]),
+    setTenantUserActive: vi.fn().mockResolvedValue({}),
+    listBroadcasts: vi.fn().mockResolvedValue([]),
+    sendBroadcast: vi.fn().mockResolvedValue({}),
     listPlans: vi.fn().mockResolvedValue([{ code: "starter" }]),
     upsertPlan: vi.fn().mockResolvedValue({ code: "starter" }),
     listTenants: vi.fn().mockResolvedValue([{ id: tenantId }]),
@@ -57,6 +66,9 @@ function administration(): PlatformAdminService {
       (_principal: PlatformPrincipal, _tenantId: string, input: BrandingInput): Promise<unknown> =>
         Promise.resolve({ tenantId, ...input }),
     ),
+    getSettings: vi.fn().mockResolvedValue({}),
+    updateSettings: vi.fn().mockResolvedValue({}),
+    renewSubscription: vi.fn().mockResolvedValue({}),
     audit: vi.fn().mockResolvedValue([{ id: 1n, action: "TENANT_ONBOARDED" }]),
   };
 }
@@ -89,6 +101,26 @@ describe("M6 platform API routes", () => {
     expect(response.headers["set-cookie"]?.[0]).toContain("Path=/api/v1/platform");
   });
 
+  it("rejects support and auditor accounts at the platform password login boundary", async () => {
+    const response = await request(createApp({ platformAuthentication: platformAuth("SUPPORT") }))
+      .post("/api/v1/platform/auth/login")
+      .send({ email: "support@example.test", password: "password1234" });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe("INVALID_PLATFORM_CREDENTIALS");
+    expect(response.headers["set-cookie"]).toBeUndefined();
+  });
+  it("does not accept a tenant cookie as a platform session", async () => {
+    const service = platformAuth();
+    const authenticate = vi.fn<PlatformAuthService["authenticate"]>().mockResolvedValue(null);
+    service.authenticate = authenticate;
+    const response = await request(createApp({ platformAuthentication: service }))
+      .get("/api/v1/platform/auth/me")
+      .set("Cookie", "phms_session=tenant.secret");
+
+    expect(response.status).toBe(401);
+    expect(authenticate).toHaveBeenCalledWith(undefined);
+  });
   it("onboards a tenant only through a super-admin platform route", async () => {
     const response = await request(
       createApp({
@@ -198,5 +230,130 @@ describe("M6 platform API routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data[0].id).toBe("1");
+  });
+
+  it("returns the platform overview to an authenticated Platform Admin", async () => {
+    const admin = administration();
+    const overview = vi.fn().mockResolvedValue({ cards: {} });
+    admin.overview = overview;
+    const response = await request(
+      createApp({
+        platformAuthentication: platformAuth("ADMIN"),
+        platformAdministration: admin,
+        supportAccess: support(),
+      }),
+    )
+      .get("/api/v1/platform/overview")
+      .set("Cookie", "phms_platform_session=test");
+
+    expect(response.status).toBe(200);
+    expect(overview).toHaveBeenCalledOnce();
+  });
+
+  it("allows only a Super Admin to create platform administrators", async () => {
+    const body = {
+      fullName: "Operations Administrator",
+      email: "operations@example.test",
+      password: "StrongPlatformPassword123!",
+      role: "ADMIN",
+    };
+    const denied = await request(
+      createApp({
+        platformAuthentication: platformAuth("ADMIN"),
+        platformAdministration: administration(),
+        supportAccess: support(),
+      }),
+    )
+      .post("/api/v1/platform/users")
+      .set("Cookie", "phms_platform_session=test")
+      .send(body);
+    expect(denied.status).toBe(403);
+
+    const admin = administration();
+    const createPlatformUser = vi.fn().mockResolvedValue({});
+    admin.createPlatformUser = createPlatformUser;
+    const created = await request(
+      createApp({
+        platformAuthentication: platformAuth(),
+        platformAdministration: admin,
+        supportAccess: support(),
+      }),
+    )
+      .post("/api/v1/platform/users")
+      .set("Cookie", "phms_platform_session=test")
+      .send(body);
+    expect(created.status).toBe(201);
+    expect(createPlatformUser).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ email: body.email, role: "ADMIN" }),
+      expect.any(String),
+    );
+  });
+
+  it("validates and sends a tenant-role notification through the Super Admin route", async () => {
+    const admin = administration();
+    const sendBroadcast = vi.fn().mockResolvedValue({});
+    admin.sendBroadcast = sendBroadcast;
+    const response = await request(
+      createApp({
+        platformAuthentication: platformAuth(),
+        platformAdministration: admin,
+        supportAccess: support(),
+      }),
+    )
+      .post("/api/v1/platform/broadcasts")
+      .set("Cookie", "phms_platform_session=test")
+      .send({
+        targetType: "ROLE",
+        tenantId,
+        role: "MANAGER",
+        title: "Scheduled maintenance",
+        message: "The platform will be maintained tonight.",
+      });
+
+    expect(response.status).toBe(201);
+    expect(sendBroadcast).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ targetType: "ROLE", tenantId, role: "MANAGER" }),
+      expect.any(String),
+    );
+  });
+
+  it("requires an audit reason when changing a tenant user's access", async () => {
+    const membershipId = "55555555-5555-4555-8555-555555555555";
+    const admin = administration();
+    const setTenantUserActive = vi.fn().mockResolvedValue({});
+    admin.setTenantUserActive = setTenantUserActive;
+    const invalid = await request(
+      createApp({
+        platformAuthentication: platformAuth(),
+        platformAdministration: admin,
+        supportAccess: support(),
+      }),
+    )
+      .patch(`/api/v1/platform/tenants/${tenantId}/users/${membershipId}/status`)
+      .set("Cookie", "phms_platform_session=test")
+      .send({ active: false, reason: "x" });
+    expect(invalid.status).toBe(400);
+
+    const valid = await request(
+      createApp({
+        platformAuthentication: platformAuth(),
+        platformAdministration: admin,
+        supportAccess: support(),
+      }),
+    )
+      .patch(`/api/v1/platform/tenants/${tenantId}/users/${membershipId}/status`)
+      .set("Cookie", "phms_platform_session=test")
+      .send({ active: false, reason: "Requested by tenant owner" });
+    expect(valid.status).toBe(200);
+    expect(setTenantUserActive).toHaveBeenCalledWith(
+      expect.anything(),
+      tenantId,
+      membershipId,
+      false,
+      "Requested by tenant owner",
+      expect.any(String),
+    );
   });
 });

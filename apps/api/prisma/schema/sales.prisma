@@ -51,6 +51,7 @@ model Sale {
   status               SaleStatus @default(COMPLETED)
   customerName         String     @map("customer_name") @db.VarChar(180)
   customerPhone        String?    @map("customer_phone") @db.VarChar(40)
+  customerId           String?    @map("customer_id") @db.Uuid
   subtotal             Decimal    @db.Decimal(19, 4)
   discount             Decimal    @default(0) @db.Decimal(19, 4)
   taxTotal             Decimal    @default(0) @map("tax_total") @db.Decimal(19, 4)
@@ -71,12 +72,14 @@ model Sale {
   payments Payment[]
   debt     Debt?
   returns  SaleReturn[]
+  customer Customer?    @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Restrict)
 
   @@unique([tenantId, id])
   @@unique([tenantId, invoiceNumber])
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, branchId, createdAt])
   @@index([tenantId, customerPhone, createdAt])
+  @@index([tenantId, customerId, createdAt])
   @@map("sales")
 }
 

@@ -1,4 +1,4 @@
-﻿import request from "supertest";
+import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app.js";
 import type { AuthenticatedPrincipal, AuthService } from "../src/auth/auth.types.js";
@@ -30,6 +30,7 @@ function fakeCatalog(): CatalogService {
     get: vi.fn().mockResolvedValue({ id: randomId }),
     create: vi.fn().mockResolvedValue({ id: randomId, name: "Gauze" }),
     update: vi.fn().mockResolvedValue({ id: randomId, version: 2 }),
+    configureBranch: vi.fn().mockResolvedValue({ productId: randomId, active: true }),
   };
 }
 
@@ -137,5 +138,47 @@ describe("M3 API routes", () => {
     expect(response.status).toBe(200);
     // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(catalog.update).toHaveBeenCalledOnce();
+  });
+  it("configures a branch product with a minimum-stock threshold and reason", async () => {
+    const catalog = fakeCatalog();
+    const response = await request(
+      createApp({ authentication, catalog, inventory: fakeInventory() }),
+    )
+      .put(`/api/v1/products/${randomId}/branch-config`)
+      .set("Cookie", "phms_session=test")
+      .send({
+        branchId,
+        active: true,
+        reorderPointBaseUnits: "25",
+        reason: "Set low-stock notification level",
+      });
+
+    expect(response.status).toBe(200);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(catalog.configureBranch).toHaveBeenCalledWith(
+      principal,
+      randomId,
+      expect.objectContaining({
+        branchId,
+        reorderPointBaseUnits: 25n,
+        reason: "Set low-stock notification level",
+      }),
+      expect.any(String),
+    );
+  });
+
+  it("rejects product archiving without an audit reason", async () => {
+    const catalog = fakeCatalog();
+    const response = await request(
+      createApp({ authentication, catalog, inventory: fakeInventory() }),
+    )
+      .patch(`/api/v1/products/${randomId}`)
+      .set("Cookie", "phms_session=test")
+      .send({ active: false, expectedVersion: 1 });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(catalog.update).not.toHaveBeenCalled();
   });
 });

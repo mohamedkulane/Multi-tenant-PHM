@@ -1,4 +1,4 @@
-﻿import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { Prisma, TenantStatus } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { authService } from "../src/auth/auth.service.js";
@@ -79,12 +79,20 @@ describeDatabase("M6 live PostgreSQL platform administration", () => {
       email: superEmail,
       password: platformPassword,
     });
-    const supportLogin = await platformAuthService.login({
-      email: supportEmail,
-      password: platformPassword,
-    });
+    await expect(
+      platformAuthService.login({
+        email: supportEmail,
+        password: platformPassword,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_PLATFORM_CREDENTIALS" });
     superPrincipal = superLogin.principal;
-    supportPrincipal = supportLogin.principal;
+    supportPrincipal = {
+      sessionId: "61000000-0000-4000-8000-000000000099",
+      userId: supportId,
+      email: supportEmail,
+      fullName: "M6 Support",
+      role: "SUPPORT",
+    };
 
     const existing = await prisma.tenantLoginDirectory.findUnique({
       where: { slug: fixtureSlug },
@@ -139,7 +147,7 @@ describeDatabase("M6 live PostgreSQL platform administration", () => {
     await prisma.$disconnect();
   });
 
-  it("authenticates platform accounts through the separate directory", () => {
+  it("allows admin platform login and rejects support password login", () => {
     expect(superPrincipal.role).toBe("SUPER_ADMIN");
     expect(supportPrincipal.role).toBe("SUPPORT");
     expect(superPrincipal.email).toBe(superEmail);

@@ -1,4 +1,4 @@
-﻿import { TenantStatus } from "@prisma/client";
+import { TenantRole, TenantStatus } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { env } from "../config/env.js";
@@ -57,6 +57,130 @@ export function createPlatformAdminRouter(
   const router = Router();
   router.use(requirePlatformAuthentication(authentication));
 
+  router.get("/overview", async (request, response) => {
+    response.json({ data: await administration.overview(request.platformAuth!) });
+  });
+
+  router.get("/settings", async (request, response) => {
+    response.json({ data: await administration.getSettings(request.platformAuth!) });
+  });
+
+  router.put("/settings", requirePlatformRole("SUPER_ADMIN"), async (request, response) => {
+    const body = z
+      .object({
+        displayName: z.string().trim().min(2).max(150),
+        logoUrl: z.url().max(1000).optional(),
+        primaryColor: color,
+        accentColor: color,
+        supportContact: z.string().trim().max(180).optional(),
+        paymentNumber: z.string().trim().min(3).max(100),
+        monthlyFee: z
+          .string()
+          .trim()
+          .regex(/^(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?$/),
+        currencyCode: z.string().trim().length(3),
+        billingInstructions: z.string().trim().min(3).max(1000),
+      })
+      .parse(request.body);
+    response.json({
+      data: await administration.updateSettings(
+        request.platformAuth!,
+        body,
+        (response.locals as { requestId?: string }).requestId,
+      ),
+    });
+  });
+
+  router.get("/users", requirePlatformRole("SUPER_ADMIN"), async (request, response) => {
+    response.json({ data: await administration.listPlatformUsers(request.platformAuth!) });
+  });
+
+  router.post("/users", requirePlatformRole("SUPER_ADMIN"), async (request, response) => {
+    const body = z
+      .object({
+        email: z.email().max(320),
+        fullName: z.string().trim().min(2).max(150),
+        password: z.string().min(16).max(256),
+        role: z.enum(["ADMIN", "SUPER_ADMIN"]),
+      })
+      .parse(request.body);
+    response.status(201).json({
+      data: await administration.createPlatformUser(
+        request.platformAuth!,
+        body,
+        (response.locals as { requestId?: string }).requestId,
+      ),
+    });
+  });
+
+  router.patch("/users/:userId", requirePlatformRole("SUPER_ADMIN"), async (request, response) => {
+    const body = z
+      .object({
+        fullName: z.string().trim().min(2).max(150).optional(),
+        password: z.string().min(16).max(256).optional(),
+        role: z.enum(["ADMIN", "SUPER_ADMIN"]).optional(),
+        active: z.boolean().optional(),
+        reason: z.string().trim().min(3).max(1000),
+      })
+      .refine(
+        (value) =>
+          value.fullName !== undefined ||
+          value.password !== undefined ||
+          value.role !== undefined ||
+          value.active !== undefined,
+        { message: "At least one account change is required" },
+      )
+      .parse(request.body);
+    response.json({
+      data: await administration.updatePlatformUser(
+        request.platformAuth!,
+        uuid.parse(request.params.userId),
+        body,
+        (response.locals as { requestId?: string }).requestId,
+      ),
+    });
+  });
+
+  router.post(
+    "/users/:userId/revoke-sessions",
+    requirePlatformRole("SUPER_ADMIN"),
+    async (request, response) => {
+      const body = z.object({ reason: z.string().trim().min(3).max(1000) }).parse(request.body);
+      response.json({
+        data: await administration.revokePlatformSessions(
+          request.platformAuth!,
+          uuid.parse(request.params.userId),
+          body.reason,
+          (response.locals as { requestId?: string }).requestId,
+        ),
+      });
+    },
+  );
+
+  router.get("/broadcasts", requirePlatformRole("SUPER_ADMIN"), async (request, response) => {
+    response.json({ data: await administration.listBroadcasts(request.platformAuth!) });
+  });
+
+  router.post("/broadcasts", requirePlatformRole("SUPER_ADMIN"), async (request, response) => {
+    const body = z
+      .object({
+        targetType: z.enum(["ALL_TENANTS", "TENANT", "BRANCH", "ROLE", "USER"]),
+        tenantId: uuid.optional(),
+        branchId: uuid.optional(),
+        membershipId: uuid.optional(),
+        role: z.enum(TenantRole).optional(),
+        title: z.string().trim().min(2).max(180),
+        message: z.string().trim().min(3).max(500),
+      })
+      .parse(request.body);
+    response.status(201).json({
+      data: await administration.sendBroadcast(
+        request.platformAuth!,
+        body,
+        (response.locals as { requestId?: string }).requestId,
+      ),
+    });
+  });
   router.get("/plans", async (request, response) => {
     response.json({ data: await administration.listPlans(request.platformAuth!) });
   });
@@ -108,6 +232,41 @@ export function createPlatformAdminRouter(
     });
   });
 
+  router.get(
+    "/tenants/:tenantId/users",
+    requirePlatformRole("SUPER_ADMIN"),
+    async (request, response) => {
+      response.json({
+        data: await administration.listTenantUsers(
+          request.platformAuth!,
+          uuid.parse(request.params.tenantId),
+        ),
+      });
+    },
+  );
+
+  router.patch(
+    "/tenants/:tenantId/users/:membershipId/status",
+    requirePlatformRole("SUPER_ADMIN"),
+    async (request, response) => {
+      const body = z
+        .object({
+          active: z.boolean(),
+          reason: z.string().trim().min(3).max(1000),
+        })
+        .parse(request.body);
+      response.json({
+        data: await administration.setTenantUserActive(
+          request.platformAuth!,
+          uuid.parse(request.params.tenantId),
+          uuid.parse(request.params.membershipId),
+          body.active,
+          body.reason,
+          (response.locals as { requestId?: string }).requestId,
+        ),
+      });
+    },
+  );
   router.get("/tenants/:tenantId", async (request, response) => {
     response.json({
       data: await administration.getTenant(
@@ -153,6 +312,30 @@ export function createPlatformAdminRouter(
           uuid.parse(request.params.tenantId),
           body.planCode,
           overrides,
+          (response.locals as { requestId?: string }).requestId,
+        ),
+      });
+    },
+  );
+
+  router.post(
+    "/tenants/:tenantId/subscription/renew",
+    requirePlatformRole("SUPER_ADMIN"),
+    async (request, response) => {
+      const body = z
+        .object({
+          months: z.number().int().min(1).max(36),
+          paymentReference: z.string().trim().max(180).optional(),
+          note: z.string().trim().max(500).optional(),
+        })
+        .parse(request.body);
+      response.json({
+        data: await administration.renewSubscription(
+          request.platformAuth!,
+          uuid.parse(request.params.tenantId),
+          body.months,
+          body.paymentReference,
+          body.note,
           (response.locals as { requestId?: string }).requestId,
         ),
       });

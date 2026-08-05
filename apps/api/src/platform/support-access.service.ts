@@ -1,4 +1,4 @@
-﻿import { PlatformRole, Prisma, SupportRequestStatus, TenantRole } from "@prisma/client";
+import { PlatformRole, Prisma, SupportRequestStatus, TenantRole } from "@prisma/client";
 import { hashSessionSecret } from "../auth/session-token.js";
 import type { AuthenticatedPrincipal } from "../auth/auth.types.js";
 import { prisma } from "../database/prisma.js";
@@ -30,11 +30,13 @@ async function setPlatformContext(
   transaction: Prisma.TransactionClient,
   userId: string,
   tenantId = "",
+  role = "",
 ) {
   await transaction.$queryRaw(
     Prisma.sql`SELECT
       set_config('app.user_id', ${userId}, true),
       set_config('app.tenant_id', ${tenantId}, true),
+      set_config('app.platform_role', ${role}, true),
       set_config('app.platform_admin', 'true', true)
     `,
   );
@@ -62,7 +64,7 @@ export class PrismaSupportAccessService implements SupportAccessService {
   async list(principal: PlatformPrincipal) {
     requireSupportRole(principal);
     return prisma.$transaction(async (transaction) => {
-      await setPlatformContext(transaction, principal.userId);
+      await setPlatformContext(transaction, principal.userId, "", principal.role);
       return transaction.supportAccessRequest.findMany({
         orderBy: { createdAt: "desc" },
         take: 200,
@@ -74,7 +76,7 @@ export class PrismaSupportAccessService implements SupportAccessService {
   async request(principal: PlatformPrincipal, tenantId: string, reason: string) {
     requireSupportRole(principal);
     return prisma.$transaction(async (transaction) => {
-      await setPlatformContext(transaction, principal.userId, tenantId);
+      await setPlatformContext(transaction, principal.userId, tenantId, principal.role);
       const tenant = await transaction.tenant.findUnique({
         where: { id: tenantId },
         select: { id: true },
@@ -120,7 +122,7 @@ export class PrismaSupportAccessService implements SupportAccessService {
       });
     }
     return prisma.$transaction(async (transaction) => {
-      await setPlatformContext(transaction, principal.userId);
+      await setPlatformContext(transaction, principal.userId, "", principal.role);
       const current = await transaction.supportAccessRequest.findUnique({
         where: { id: requestId },
       });
@@ -180,7 +182,7 @@ export class PrismaSupportAccessService implements SupportAccessService {
   async activate(principal: PlatformPrincipal, requestId: string) {
     requireSupportRole(principal);
     return prisma.$transaction(async (transaction) => {
-      await setPlatformContext(transaction, principal.userId);
+      await setPlatformContext(transaction, principal.userId, "", principal.role);
       const accessRequest = await transaction.supportAccessRequest.findUnique({
         where: { id: requestId },
       });
@@ -237,7 +239,7 @@ export class PrismaSupportAccessService implements SupportAccessService {
   async revoke(principal: PlatformPrincipal, requestId: string, reason: string) {
     requireSupportRole(principal);
     await prisma.$transaction(async (transaction) => {
-      await setPlatformContext(transaction, principal.userId);
+      await setPlatformContext(transaction, principal.userId, "", principal.role);
       const accessRequest = await transaction.supportAccessRequest.findUnique({
         where: { id: requestId },
       });
