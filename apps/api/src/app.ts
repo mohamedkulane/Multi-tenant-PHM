@@ -120,16 +120,37 @@ export function createApp(options: CreateAppOptions = {}) {
     }),
   );
   app.use(helmet());
+  const allowedOrigins = new Set(
+    (Array.isArray(env.WEB_ORIGINS) ? env.WEB_ORIGINS : String(env.WEB_ORIGINS).split(","))
+      .map((origin) => origin.trim().replace(/\/$/, ""))
+      .filter(Boolean),
+  );
+
   app.use(
     cors({
       credentials: true,
       origin(origin, callback) {
-        if (!origin || allowedOrigins.has(origin)) {
+        if (!origin) {
           callback(null, true);
           return;
         }
 
-        callback(null, false);
+        const normalizedOrigin = origin.trim().replace(/\/$/, "");
+
+        if (allowedOrigins.has(normalizedOrigin)) {
+          callback(null, true);
+          return;
+        }
+
+        logger.warn(
+          {
+            origin: normalizedOrigin,
+            allowedOrigins: [...allowedOrigins],
+          },
+          "CORS origin rejected",
+        );
+
+        callback(new Error(`CORS origin not allowed: ${normalizedOrigin}`));
       },
     }),
   );
