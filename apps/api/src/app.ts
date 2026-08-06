@@ -86,7 +86,6 @@ interface ResponseLocals {
 
 export function createApp(options: CreateAppOptions = {}) {
   const app = express();
-  const allowedOrigins = new Set(env.WEB_ORIGINS);
   const authentication = options.authentication ?? combinedAuthService;
   const platformAuthentication = options.platformAuthentication ?? platformAuthService;
 
