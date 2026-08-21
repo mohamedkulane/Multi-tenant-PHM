@@ -7,9 +7,96 @@ enum LabVisitStatus {
 
 enum LabResultStatus {
   PENDING
+  COMPLETED
   NEGATIVE
   POSITIVE
   INCONCLUSIVE
+}
+
+enum ClinicVisitStatus {
+  AWAITING_CONSULTATION_PAYMENT
+  WAITING_FOR_DOCTOR
+  IN_CONSULTATION
+  IN_EXAMINATION
+  AWAITING_LAB_PAYMENT
+  WAITING_FOR_LAB
+  WAITING_FOR_SAMPLE
+  LAB_IN_PROGRESS
+  RESULTS_READY
+  LAB_RESULTS_READY
+  DOCTOR_REVIEW
+  PRESCRIPTION_READY
+  PRESCRIPTION_CREATED
+  AT_PHARMACY
+  COMPLETED
+  CANCELLED
+}
+
+enum ConsultationPaymentStatus {
+  UNPAID
+  PAID
+}
+
+enum SampleStatus {
+  NOT_COLLECTED
+  COLLECTED
+}
+
+enum LabResultType {
+  POSITIVE_NEGATIVE
+  NUMERIC
+  TEXT
+  SELECT
+  PANEL
+}
+
+enum LabInterpretation {
+  NORMAL
+  ABNORMAL
+  HIGH
+  LOW
+  POSITIVE
+  NEGATIVE
+  CRITICAL
+  INCONCLUSIVE
+  BORDERLINE
+}
+
+enum LabOrderPriority {
+  ROUTINE
+  URGENT
+  STAT
+}
+
+enum DiagnosisType {
+  PROVISIONAL
+  DIFFERENTIAL
+  FINAL
+}
+
+enum PrescriptionStatus {
+  NOT_DISPENSED
+  PARTIALLY_DISPENSED
+  DISPENSED
+  CANCELLED
+}
+
+enum PrescriptionItemStatus {
+  PENDING
+  PARTIALLY_DISPENSED
+  DISPENSED
+  NOT_AVAILABLE
+  CANCELLED
+}
+
+enum ClinicalPaymentType {
+  CONSULTATION
+  LAB
+}
+
+enum ClinicalPaymentStatus {
+  PAID
+  VOIDED
 }
 
 model Customer {
@@ -72,9 +159,17 @@ model LabTest {
   id         String   @id @default(uuid()) @db.Uuid
   tenantId   String   @map("tenant_id") @db.Uuid
   categoryId String   @map("category_id") @db.Uuid
-  name       String   @db.VarChar(180)
-  price      Decimal  @db.Decimal(19, 4)
-  active     Boolean  @default(true)
+  code            String        @db.VarChar(40)
+  name            String        @db.VarChar(180)
+  description     String?       @db.VarChar(1000)
+  price           Decimal       @db.Decimal(19, 4)
+  sampleType      String?       @map("sample_type") @db.VarChar(80)
+  resultType      LabResultType @default(POSITIVE_NEGATIVE) @map("result_type")
+  unit            String?       @db.VarChar(80)
+  referenceRange  String?       @map("reference_range") @db.VarChar(180)
+  resultOptions   Json?         @map("result_options")
+  panelComponents Json?         @map("panel_components")
+  active          Boolean       @default(true)
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -83,6 +178,7 @@ model LabTest {
 
   @@unique([tenantId, id])
   @@unique([tenantId, categoryId, name])
+  @@unique([tenantId, code])
   @@index([tenantId, active, name])
   @@map("lab_tests")
 }
@@ -90,17 +186,27 @@ model LabTest {
 model Patient {
   id        String   @id @default(uuid()) @db.Uuid
   tenantId  String   @map("tenant_id") @db.Uuid
-  name      String   @db.VarChar(180)
-  age       Int
-  sex       String?  @db.VarChar(20)
-  phone     String?  @db.VarChar(40)
-  notes     String?  @db.VarChar(1000)
+  patientNumber         String    @map("patient_number") @db.VarChar(40)
+  name                  String    @db.VarChar(180)
+  age                   Int
+  sex                   String?   @db.VarChar(20)
+  dateOfBirth           DateTime? @map("date_of_birth") @db.Date
+  phone                 String?   @db.VarChar(40)
+  address               String?   @db.VarChar(500)
+  emergencyContactName  String?   @map("emergency_contact_name") @db.VarChar(180)
+  emergencyContactPhone String?   @map("emergency_contact_phone") @db.VarChar(40)
+  bloodGroup            String?   @map("blood_group") @db.VarChar(10)
+  allergies             String?   @db.VarChar(2000)
+  notes                 String?   @db.VarChar(1000)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  visits LabVisit[]
+  visits           LabVisit[]
+  clinicVisits     ClinicVisit[]
+  clinicalPayments ClinicalPayment[]
 
   @@unique([tenantId, id])
+  @@unique([tenantId, patientNumber])
   @@index([tenantId, name, phone])
   @@map("patients")
 }
@@ -110,27 +216,39 @@ model LabVisit {
   tenantId                 String         @map("tenant_id") @db.Uuid
   branchId                 String         @map("branch_id") @db.Uuid
   patientId                String         @map("patient_id") @db.Uuid
+  clinicVisitId            String?        @map("clinic_visit_id") @db.Uuid
   visitNumber              String         @map("visit_number") @db.VarChar(80)
   status                   LabVisitStatus @default(REGISTERED)
-  clinicalNotes            String?        @map("clinical_notes") @db.VarChar(2000)
-  subtotal                 Decimal        @db.Decimal(19, 4)
+  clinicalNotes            String?          @map("clinical_notes") @db.VarChar(2000)
+  priority                 LabOrderPriority @default(ROUTINE)
+  requestedByMembershipId  String?          @map("requested_by_membership_id") @db.Uuid
+  sampleType               String?          @map("sample_type") @db.VarChar(80)
+  sampleId                 String?          @map("sample_id") @db.VarChar(80)
+  sampleNotes              String?          @map("sample_notes") @db.VarChar(1000)
+  subtotal                 Decimal          @db.Decimal(19, 4)
   discount                 Decimal        @default(0) @db.Decimal(19, 4)
   total                    Decimal        @db.Decimal(19, 4)
   amountPaid               Decimal        @default(0) @map("amount_paid") @db.Decimal(19, 4)
   paymentMethod            PaymentMethod? @map("payment_method")
   registeredByMembershipId String         @map("registered_by_membership_id") @db.Uuid
   completedAt              DateTime?      @map("completed_at") @db.Timestamptz(3)
+  sampleStatus             SampleStatus   @default(NOT_COLLECTED) @map("sample_status")
+  sampleCollectedAt        DateTime?      @map("sample_collected_at") @db.Timestamptz(3)
+  sampleCollectedById      String?        @map("sample_collected_by_membership_id") @db.Uuid
   createdAt                DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  patient      Patient        @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
-  tests        LabVisitTest[]
-  payments     LabPayment[]
+  patient     Patient        @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  clinicVisit ClinicVisit?   @relation(fields: [tenantId, clinicVisitId], references: [tenantId, id], onDelete: Restrict)
+  tests       LabVisitTest[]
+  payments         LabPayment[]
+  clinicalPayments ClinicalPayment[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, visitNumber])
   @@index([tenantId, branchId, createdAt])
   @@index([tenantId, patientId, createdAt])
+  @@index([tenantId, clinicVisitId])
   @@map("lab_visits")
 }
 
@@ -164,8 +282,15 @@ model LabVisitTest {
   testName             String          @map("test_name") @db.VarChar(180)
   categoryName         String          @map("category_name") @db.VarChar(150)
   price                Decimal         @db.Decimal(19, 4)
-  resultStatus         LabResultStatus @default(PENDING) @map("result_status")
-  resultNote           String?         @map("result_note") @db.VarChar(1000)
+  resultStatus         LabResultStatus   @default(PENDING) @map("result_status")
+  resultType           LabResultType     @default(POSITIVE_NEGATIVE) @map("result_type")
+  resultValue          String?           @map("result_value") @db.VarChar(1000)
+  numericValue         Decimal?          @map("numeric_value") @db.Decimal(19, 6)
+  unit                 String?           @db.VarChar(80)
+  referenceRange       String?           @map("reference_range") @db.VarChar(180)
+  interpretation       LabInterpretation?
+  resultData           Json?             @map("result_data")
+  resultNote           String?           @map("result_note") @db.VarChar(1000)
   markedAt             DateTime?       @map("marked_at") @db.Timestamptz(3)
   markedByMembershipId String?         @map("marked_by_membership_id") @db.Uuid
 
@@ -176,4 +301,170 @@ model LabVisitTest {
   @@unique([tenantId, visitId, labTestId])
   @@index([tenantId, visitId])
   @@map("lab_visit_tests")
+}
+
+model ClinicVisit {
+  id                         String                    @id @default(uuid()) @db.Uuid
+  tenantId                   String                    @map("tenant_id") @db.Uuid
+  branchId                   String                    @map("branch_id") @db.Uuid
+  patientId                  String                    @map("patient_id") @db.Uuid
+  visitNumber                String                    @map("visit_number") @db.VarChar(80)
+  status                     ClinicVisitStatus         @default(AWAITING_CONSULTATION_PAYMENT)
+  consultationFee            Decimal                   @map("consultation_fee") @db.Decimal(19, 4)
+  consultationPaymentStatus  ConsultationPaymentStatus @default(UNPAID) @map("consultation_payment_status")
+  consultationPaymentMethod  PaymentMethod?            @map("consultation_payment_method")
+  consultationPaidAt         DateTime?                 @map("consultation_paid_at") @db.Timestamptz(3)
+  consultationCollectedById  String?                   @map("consultation_collected_by_membership_id") @db.Uuid
+  chiefComplaint             String?                   @map("chief_complaint") @db.VarChar(2000)
+  history                    String?                   @db.VarChar(4000)
+  examination                String?                   @db.VarChar(4000)
+  diagnosis                  String?                   @db.VarChar(2000)
+  doctorNotes                String?                   @map("doctor_notes") @db.VarChar(4000)
+  assignedDoctorMembershipId String?                   @map("assigned_doctor_membership_id") @db.Uuid
+  registeredByMembershipId   String                    @map("registered_by_membership_id") @db.Uuid
+  consultationCompletedAt    DateTime?                 @map("consultation_completed_at") @db.Timestamptz(3)
+  completedAt                DateTime?                 @map("completed_at") @db.Timestamptz(3)
+  createdAt                  DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                  DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  patient            Patient             @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  labVisits          LabVisit[]
+  prescriptions      Prescription[]
+  clinicalAssessment ClinicalAssessment?
+  diagnoses          Diagnosis[]
+  clinicalPayments   ClinicalPayment[]
+  sales              Sale[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, visitNumber])
+  @@index([tenantId, branchId, status, createdAt])
+  @@index([tenantId, patientId, createdAt])
+  @@map("clinic_visits")
+}
+
+model ClinicalAssessment {
+  id                    String    @id @default(uuid()) @db.Uuid
+  tenantId              String    @map("tenant_id") @db.Uuid
+  clinicVisitId         String    @map("clinic_visit_id") @db.Uuid
+  chiefComplaint        String    @map("chief_complaint") @db.VarChar(2000)
+  historyPresentIllness String?   @map("history_present_illness") @db.VarChar(6000)
+  pastMedicalHistory    String?   @map("past_medical_history") @db.VarChar(4000)
+  pastSurgicalHistory   String?   @map("past_surgical_history") @db.VarChar(4000)
+  currentMedicines      String?   @map("current_medicines") @db.VarChar(4000)
+  allergies             String?   @db.VarChar(4000)
+  symptoms              Json      @default("[]")
+  vitalSigns            Json      @default("{}") @map("vital_signs")
+  physicalExamination   Json      @default("{}") @map("physical_examination")
+  examinationNotes      String?   @map("examination_notes") @db.VarChar(6000)
+  provisionalDiagnosis  String?   @map("provisional_diagnosis") @db.VarChar(3000)
+  createdByMembershipId String    @map("created_by_membership_id") @db.Uuid
+  updatedByMembershipId String    @map("updated_by_membership_id") @db.Uuid
+  startedAt             DateTime  @default(now()) @map("started_at") @db.Timestamptz(3)
+  completedAt           DateTime? @map("completed_at") @db.Timestamptz(3)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinicVisit ClinicVisit @relation(fields: [tenantId, clinicVisitId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, clinicVisitId])
+  @@index([tenantId, createdAt])
+  @@map("clinical_assessments")
+}
+
+model Diagnosis {
+  id                     String        @id @default(uuid()) @db.Uuid
+  tenantId               String        @map("tenant_id") @db.Uuid
+  clinicVisitId          String        @map("clinic_visit_id") @db.Uuid
+  type                   DiagnosisType
+  description            String        @db.VarChar(3000)
+  code                   String?       @db.VarChar(40)
+  recordedByMembershipId String        @map("recorded_by_membership_id") @db.Uuid
+  recordedAt             DateTime      @default(now()) @map("recorded_at") @db.Timestamptz(3)
+
+  clinicVisit ClinicVisit @relation(fields: [tenantId, clinicVisitId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, clinicVisitId, type, recordedAt])
+  @@map("diagnoses")
+}
+
+model ClinicalPayment {
+  id                      String                @id @default(uuid()) @db.Uuid
+  tenantId                String                @map("tenant_id") @db.Uuid
+  branchId                String                @map("branch_id") @db.Uuid
+  patientId               String                @map("patient_id") @db.Uuid
+  clinicVisitId           String                @map("clinic_visit_id") @db.Uuid
+  labVisitId              String?               @map("lab_visit_id") @db.Uuid
+  type                    ClinicalPaymentType
+  status                  ClinicalPaymentStatus @default(PAID)
+  receiptNumber           String                @map("receipt_number") @db.VarChar(80)
+  amount                  Decimal               @db.Decimal(19, 4)
+  method                  PaymentMethod
+  externalReference       String?               @map("external_reference") @db.VarChar(180)
+  idempotencyKey          String                @map("idempotency_key") @db.VarChar(120)
+  notes                   String?               @db.VarChar(500)
+  collectedByMembershipId String                @map("collected_by_membership_id") @db.Uuid
+  collectedByUserId       String                @map("collected_by_user_id") @db.Uuid
+  paidAt                  DateTime              @default(now()) @map("paid_at") @db.Timestamptz(3)
+  createdAt               DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  patient     Patient     @relation(fields: [tenantId, patientId], references: [tenantId, id], onDelete: Restrict)
+  clinicVisit ClinicVisit @relation(fields: [tenantId, clinicVisitId], references: [tenantId, id], onDelete: Restrict)
+  labVisit    LabVisit?   @relation(fields: [tenantId, labVisitId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, receiptNumber])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, branchId, paidAt])
+  @@index([tenantId, clinicVisitId, type])
+  @@map("clinical_payments")
+}
+model Prescription {
+  id                       String   @id @default(uuid()) @db.Uuid
+  tenantId                 String   @map("tenant_id") @db.Uuid
+  branchId                 String   @map("branch_id") @db.Uuid
+  clinicVisitId            String             @map("clinic_visit_id") @db.Uuid
+  prescriptionNumber       String             @map("prescription_number") @db.VarChar(80)
+  status                   PrescriptionStatus @default(NOT_DISPENSED)
+  prescribedByMembershipId String             @map("prescribed_by_membership_id") @db.Uuid
+  diagnosisSnapshot        String?            @map("diagnosis_snapshot") @db.VarChar(3000)
+  notes                    String?            @db.VarChar(2000)
+  dispensedAt              DateTime?          @map("dispensed_at") @db.Timestamptz(3)
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  clinicVisit ClinicVisit        @relation(fields: [tenantId, clinicVisitId], references: [tenantId, id], onDelete: Restrict)
+  items       PrescriptionItem[]
+  sales       Sale[]
+
+  @@unique([tenantId, id])
+  @@unique([tenantId, clinicVisitId])
+  @@unique([tenantId, prescriptionNumber])
+  @@index([tenantId, branchId, createdAt])
+  @@map("prescriptions")
+}
+
+model PrescriptionItem {
+  id             String  @id @default(uuid()) @db.Uuid
+  tenantId       String  @map("tenant_id") @db.Uuid
+  prescriptionId String  @map("prescription_id") @db.Uuid
+  medicineName      String                 @map("medicine_name") @db.VarChar(180)
+  strength          String?                @db.VarChar(120)
+  dosage            String                 @db.VarChar(120)
+  frequency         String                 @db.VarChar(120)
+  duration          String                 @db.VarChar(120)
+  route             String?                @db.VarChar(80)
+  quantity          Decimal?               @db.Decimal(19, 4)
+  instructions      String?                @db.VarChar(500)
+  status            PrescriptionItemStatus @default(PENDING)
+  mappedProductId   String?                @map("mapped_product_id") @db.Uuid
+  mappedPackageCode String?                @map("mapped_package_code") @db.VarChar(40)
+  dispensedQuantity Decimal                @default(0) @map("dispensed_quantity") @db.Decimal(19, 4)
+
+  prescription Prescription @relation(fields: [tenantId, prescriptionId], references: [tenantId, id], onDelete: Cascade)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, prescriptionId])
+  @@map("prescription_items")
 }

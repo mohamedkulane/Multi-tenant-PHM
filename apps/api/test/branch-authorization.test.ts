@@ -10,7 +10,7 @@ const principal: AuthenticatedPrincipal = {
   fullName: "Branch User",
   membershipId: "44444444-4444-4444-8444-444444444444",
   username: "branch-user",
-  role: "CASHIER",
+  role: "RECEPTIONIST",
   allBranches: false,
   branchIds: ["55555555-5555-4555-8555-555555555555"],
 };
@@ -26,9 +26,9 @@ describe("branch authorization", () => {
 
   it("allows all branches only for OWNER or ADMIN, never ordinary staff", () => {
     const otherBranch = "66666666-6666-4666-8666-666666666666";
-    expect(canAccessBranch({ ...principal, role: "CASHIER", allBranches: true }, otherBranch)).toBe(
-      false,
-    );
+    expect(
+      canAccessBranch({ ...principal, role: "RECEPTIONIST", allBranches: true }, otherBranch),
+    ).toBe(false);
     expect(canAccessBranch({ ...principal, role: "ADMIN", allBranches: true }, otherBranch)).toBe(
       true,
     );

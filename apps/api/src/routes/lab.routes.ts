@@ -1,4 +1,4 @@
-import { LabResultStatus, PaymentMethod } from "@prisma/client";
+import { LabInterpretation, LabResultStatus, LabResultType, PaymentMethod } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import type { AuthService } from "../auth/auth.types.js";
@@ -11,6 +11,29 @@ const money = z
   .string()
   .trim()
   .regex(/^(0|[1-9][0-9]{0,14})(\.[0-9]{1,4})?$/);
+const optionalText = (max: number) => z.string().trim().max(max).optional();
+const labTestSchema = z.object({
+  categoryId: uuid,
+  code: z.string().trim().min(2).max(40).regex(/^[A-Za-z0-9._-]+$/).optional(),
+  name: z.string().trim().min(2).max(180),
+  description: optionalText(1000),
+  price: money,
+  sampleType: optionalText(80),
+  resultType: z.nativeEnum(LabResultType).default("POSITIVE_NEGATIVE"),
+  unit: optionalText(80),
+  referenceRange: optionalText(180),
+  resultOptions: z.array(z.string().trim().min(1).max(120)).max(100).optional(),
+  panelComponents: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(120),
+        unit: optionalText(80),
+        referenceRange: optionalText(180),
+      }),
+    )
+    .max(100)
+    .optional(),
+});
 
 export function createLabRouter(authentication: AuthService, service: LabService = labService) {
   const router = Router();
@@ -39,9 +62,7 @@ export function createLabRouter(authentication: AuthService, service: LabService
     res.status(201).json({
       data: await service.createTest(
         req.auth!,
-        z
-          .object({ categoryId: uuid, name: z.string().trim().min(2).max(180), price: money })
-          .parse(req.body),
+        labTestSchema.parse(req.body),
       ),
     }),
   );
@@ -50,18 +71,11 @@ export function createLabRouter(authentication: AuthService, service: LabService
       data: await service.updateTest(
         req.auth!,
         uuid.parse(req.params.testId),
-        z
-          .object({
-            categoryId: uuid,
-            name: z.string().trim().min(2).max(180),
-            price: money,
-            active: z.boolean(),
-          })
-          .parse(req.body),
+        labTestSchema.extend({ active: z.boolean() }).parse(req.body),
       ),
     }),
   );
-  router.get("/patients", requirePermission("lab.read"), async (req, res) =>
+  router.get("/patients", requirePermission("patient.read"), async (req, res) =>
     res.json({
       data: await service.patients(
         req.auth!,
@@ -69,7 +83,7 @@ export function createLabRouter(authentication: AuthService, service: LabService
       ),
     }),
   );
-  router.post("/patients", requirePermission("lab.manage"), async (req, res) =>
+  router.post("/patients", requirePermission("patient.create"), async (req, res) =>
     res.status(201).json({
       data: await service.createPatient(
         req.auth!,
@@ -77,9 +91,15 @@ export function createLabRouter(authentication: AuthService, service: LabService
           .object({
             name: z.string().trim().min(2).max(180),
             age: z.number().int().min(0).max(130),
-            sex: z.string().trim().max(20).optional(),
-            phone: z.string().trim().max(40).optional(),
-            notes: z.string().trim().max(1000).optional(),
+            sex: optionalText(20),
+            dateOfBirth: z.coerce.date().optional(),
+            phone: optionalText(40),
+            address: optionalText(500),
+            emergencyContactName: optionalText(180),
+            emergencyContactPhone: optionalText(40),
+            bloodGroup: optionalText(10),
+            allergies: optionalText(2000),
+            notes: optionalText(1000),
           })
           .parse(req.body),
       ),
@@ -141,7 +161,11 @@ export function createLabRouter(authentication: AuthService, service: LabService
           z
             .object({
               resultStatus: z.nativeEnum(LabResultStatus),
-              resultNote: z.string().trim().max(1000).optional(),
+              resultValue: optionalText(1000),
+              numericValue: z.coerce.number().finite().optional(),
+              interpretation: z.nativeEnum(LabInterpretation).optional(),
+              resultData: z.record(z.string(), z.unknown()).optional(),
+              resultNote: optionalText(1000),
             })
             .parse(req.body),
         ),

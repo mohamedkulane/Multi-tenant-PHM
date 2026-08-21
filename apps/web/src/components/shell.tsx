@@ -41,72 +41,52 @@ interface NavigationItem {
 }
 
 const tenantNavigation: NavigationItem[] = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["OWNER", "ADMIN"] },
   {
-    to: "/dashboard",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-    roles: ["OWNER", "ADMIN", "MANAGER", "PHARMACIST", "AUDITOR"],
+    to: "/clinic",
+    label: "Patient workflow",
+    icon: HeartPulse,
+    roles: ["OWNER", "ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "LAB_TECHNICIAN"],
   },
-  { to: "/products", label: "Products", icon: PackageSearch },
-  { to: "/customers", label: "Customers", icon: Users },
-  { to: "/inventory", label: "Inventory", icon: Boxes },
   {
-    to: "/suppliers",
-    label: "Suppliers",
-    icon: Truck,
-    roles: ["OWNER", "ADMIN", "MANAGER", "PHARMACIST", "AUDITOR"],
+    to: "/products",
+    label: "Products",
+    icon: PackageSearch,
+    roles: ["OWNER", "ADMIN", "PHARMACIST"],
   },
+  {
+    to: "/customers",
+    label: "Customers",
+    icon: Users,
+    roles: ["OWNER", "ADMIN", "RECEPTIONIST", "PHARMACIST"],
+  },
+  { to: "/inventory", label: "Inventory", icon: Boxes, roles: ["OWNER", "ADMIN", "PHARMACIST"] },
+  { to: "/suppliers", label: "Suppliers", icon: Truck, roles: ["OWNER", "ADMIN", "PHARMACIST"] },
   {
     to: "/lab",
     label: "Laboratory",
     icon: FlaskConical,
-    roles: ["OWNER", "ADMIN", "MANAGER", "PHARMACIST", "AUDITOR"],
+    roles: ["OWNER", "ADMIN", "LAB_TECHNICIAN"],
   },
   {
     to: "/sales",
-    label: "Sales & invoices",
+    label: "Pharmacy sales",
     icon: ShoppingCart,
-    roles: ["OWNER", "ADMIN", "MANAGER", "PHARMACIST", "CASHIER"],
+    roles: ["OWNER", "ADMIN", "PHARMACIST"],
   },
-  {
-    to: "/debts",
-    label: "Debts",
-    icon: WalletCards,
-    roles: ["OWNER", "ADMIN", "MANAGER"],
-  },
-  {
-    to: "/expenses",
-    label: "Expenses",
-    icon: Receipt,
-    roles: ["OWNER", "ADMIN", "MANAGER", "AUDITOR"],
-  },
+  { to: "/debts", label: "Debts", icon: WalletCards, roles: ["OWNER", "ADMIN"] },
+  { to: "/expenses", label: "Expenses", icon: Receipt, roles: ["OWNER", "ADMIN"] },
   {
     to: "/reports",
     label: "Reports",
     icon: BarChart3,
-    roles: ["OWNER", "ADMIN", "MANAGER", "PHARMACIST", "AUDITOR"],
+    roles: ["OWNER", "ADMIN", "PHARMACIST"],
   },
-  {
-    to: "/staff",
-    label: "Staff & branches",
-    icon: Users,
-    roles: ["OWNER", "ADMIN", "MANAGER", "AUDITOR"],
-  },
-  {
-    to: "/operations",
-    label: "Jobs & alerts",
-    icon: Bell,
-    roles: ["OWNER", "ADMIN", "MANAGER", "PHARMACIST", "AUDITOR"],
-  },
-  {
-    to: "/audit",
-    label: "Audit trail",
-    icon: ScrollText,
-    roles: ["OWNER", "ADMIN", "MANAGER", "AUDITOR"],
-  },
+  { to: "/staff", label: "Staff & branches", icon: Users, roles: ["OWNER", "ADMIN"] },
+  { to: "/operations", label: "Jobs & alerts", icon: Bell, roles: ["OWNER", "ADMIN"] },
+  { to: "/audit", label: "Audit trail", icon: ScrollText, roles: ["OWNER", "ADMIN"] },
   { to: "/account", label: "Account", icon: Settings2 },
 ];
-
 const platformNavigation: NavigationItem[] = [
   { to: "/platform/dashboard", label: "Overview", icon: LayoutDashboard },
   { to: "/platform/tenants", label: "Tenants", icon: Building2 },
@@ -244,7 +224,7 @@ export function TenantShell({
       getData<{ unread: number; items: Array<Record<string, unknown>> }>(
         `/notifications?branchId=${branch!.id}`,
       ),
-    enabled: Boolean(branch) && principal.role !== "CASHIER",
+    enabled: Boolean(branch) && principal.role !== "RECEPTIONIST",
     refetchInterval: 60_000,
   });
   const unreadNotifications = notifications.data?.unread ?? 0;
@@ -320,7 +300,7 @@ export function TenantShell({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {principal.role !== "CASHIER" ? (
+            {principal.role !== "RECEPTIONIST" ? (
               <div className="relative">
                 <button
                   type="button"

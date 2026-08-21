@@ -226,12 +226,12 @@ describeDatabase("M6 live PostgreSQL platform administration", () => {
 
     expect(supportTenantPrincipal).toMatchObject({
       tenantId,
-      role: "AUDITOR",
+      role: "DOCTOR",
       allBranches: true,
       isSupportSession: true,
     });
-    expect(roleHasPermission("AUDITOR", "report.read")).toBe(true);
-    expect(roleHasPermission("AUDITOR", "sale.create")).toBe(false);
+    expect(roleHasPermission("DOCTOR", "report.read")).toBe(true);
+    expect(roleHasPermission("DOCTOR", "sale.create")).toBe(false);
 
     await supportAccessService.revoke(superPrincipal, accessRequest.id, "Diagnostic window closed");
     await expect(supportAccessService.authenticate(activated.sessionToken)).resolves.toBeNull();

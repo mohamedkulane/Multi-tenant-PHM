@@ -22,6 +22,8 @@ type Row = Record<string, unknown>;
 const text = (value: unknown) =>
   typeof value === "string" || typeof value === "number" ? String(value) : "";
 const rows = (value: unknown): Row[] => (Array.isArray(value) ? (value as Row[]) : []);
+const object = (value: unknown): Row =>
+  value && typeof value === "object" && !Array.isArray(value) ? (value as Row) : {};
 const idempotency = (prefix: string) => prefix + ":" + Date.now() + ":" + crypto.randomUUID();
 
 export function CustomersPage({
@@ -31,7 +33,7 @@ export function CustomersPage({
   workspace: Workspace;
   principal: TenantPrincipal;
 }) {
-  const canManage = principal.role !== "AUDITOR";
+  const canManage = ["OWNER", "ADMIN", "RECEPTIONIST", "PHARMACIST"].includes(principal.role);
   const client = useQueryClient();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Row | null>(null);
@@ -383,7 +385,7 @@ export function CustomersPage({
 }
 
 export function SuppliersPage({ principal }: { principal: TenantPrincipal }) {
-  const canManage = ["OWNER", "ADMIN", "MANAGER"].includes(principal.role);
+  const canManage = ["OWNER", "ADMIN"].includes(principal.role);
   const client = useQueryClient();
   const [editing, setEditing] = useState<Row | null>(null);
   const blank = {
@@ -756,11 +758,29 @@ export function LabPage({
     name: "",
     age: "",
     sex: "",
+    dateOfBirth: "",
     phone: "",
+    address: "",
+    emergencyContactName: "",
+    emergencyContactPhone: "",
+    bloodGroup: "",
+    allergies: "",
     notes: "",
   });
   const [categoryName, setCategoryName] = useState("");
-  const [testForm, setTestForm] = useState({ categoryId: "", name: "", price: "" });
+  const [testForm, setTestForm] = useState({
+    categoryId: "",
+    code: "",
+    name: "",
+    description: "",
+    price: "",
+    sampleType: "",
+    resultType: "POSITIVE_NEGATIVE",
+    unit: "",
+    referenceRange: "",
+    resultOptions: "",
+    panelComponents: "",
+  });
   const [visitForm, setVisitForm] = useState({
     patientId: "",
     testIds: [] as string[],
@@ -777,11 +797,21 @@ export function LabPage({
     notes: "",
   });
   const [resultForms, setResultForms] = useState<
-    Record<string, { resultStatus: string; resultNote: string }>
+    Record<
+      string,
+      {
+        resultStatus: string;
+        resultValue: string;
+        numericValue: string;
+        interpretation: string;
+        resultData: Record<string, string>;
+        resultNote: string;
+      }
+    >
   >({});
-  const canManage = ["OWNER", "ADMIN", "MANAGER"].includes(principal.role);
-  const canResult = ["OWNER", "ADMIN", "MANAGER", "PHARMACIST"].includes(principal.role);
-  const canCollectPayment = ["OWNER", "ADMIN", "MANAGER"].includes(principal.role);
+  const canManage = ["OWNER", "ADMIN"].includes(principal.role);
+  const canResult = ["OWNER", "ADMIN", "LAB_TECHNICIAN"].includes(principal.role);
+  const canCollectPayment = ["OWNER", "ADMIN", "RECEPTIONIST"].includes(principal.role);
   const categories = useQuery({
     queryKey: ["lab-categories"],
     queryFn: () => getData<Row[]>("/lab/categories"),
@@ -816,12 +846,30 @@ export function LabPage({
         ...patientForm,
         age: Number(patientForm.age),
         sex: patientForm.sex || undefined,
+        dateOfBirth: patientForm.dateOfBirth || undefined,
         phone: patientForm.phone || undefined,
+        address: patientForm.address || undefined,
+        emergencyContactName: patientForm.emergencyContactName || undefined,
+        emergencyContactPhone: patientForm.emergencyContactPhone || undefined,
+        bloodGroup: patientForm.bloodGroup || undefined,
+        allergies: patientForm.allergies || undefined,
         notes: patientForm.notes || undefined,
       }),
     onSuccess: async (p) => {
       setPatientOpen(false);
-      setPatientForm({ name: "", age: "", sex: "", phone: "", notes: "" });
+      setPatientForm({
+        name: "",
+        age: "",
+        sex: "",
+        dateOfBirth: "",
+        phone: "",
+        address: "",
+        emergencyContactName: "",
+        emergencyContactPhone: "",
+        bloodGroup: "",
+        allergies: "",
+        notes: "",
+      });
       setVisitForm({ ...visitForm, patientId: text(p["id"]) });
       if (patientReturnToVisit) {
         setPatientReturnToVisit(false);
@@ -839,10 +887,44 @@ export function LabPage({
     },
   });
   const createTest = useMutation({
-    mutationFn: () => sendData("post", "/lab/tests", testForm),
+    mutationFn: () =>
+      sendData("post", "/lab/tests", {
+        ...testForm,
+        code: testForm.code || undefined,
+        description: testForm.description || undefined,
+        sampleType: testForm.sampleType || undefined,
+        unit: testForm.unit || undefined,
+        referenceRange: testForm.referenceRange || undefined,
+        resultOptions:
+          testForm.resultType === "SELECT"
+            ? testForm.resultOptions.split(",").map((item) => item.trim()).filter(Boolean)
+            : undefined,
+        panelComponents:
+          testForm.resultType === "PANEL"
+            ? testForm.panelComponents
+                .split("\n")
+                .map((line) => {
+                  const [name, unit, referenceRange] = line.split("|").map((item) => item.trim());
+                  return { name, unit: unit || undefined, referenceRange: referenceRange || undefined };
+                })
+                .filter((item) => item.name)
+            : undefined,
+      }),
     onSuccess: async () => {
       setTestOpen(false);
-      setTestForm({ categoryId: "", name: "", price: "" });
+      setTestForm({
+        categoryId: "",
+        code: "",
+        name: "",
+        description: "",
+        price: "",
+        sampleType: "",
+        resultType: "POSITIVE_NEGATIVE",
+        unit: "",
+        referenceRange: "",
+        resultOptions: "",
+        panelComponents: "",
+      });
       await refresh();
     },
   });
@@ -898,12 +980,29 @@ export function LabPage({
   const markResult = useMutation({
     mutationFn: ({ visitId, testId }: { visitId: string; testId: string }) => {
       const test = rows(selectedVisit?.["tests"]).find((item) => text(item["id"]) === testId);
+      const resultType = text(test?.["resultType"] || "POSITIVE_NEGATIVE");
+      const form = resultForms[testId] ?? {
+        resultStatus: text(test?.["resultStatus"] || "PENDING"),
+        resultValue: text(test?.["resultValue"]),
+        numericValue: text(test?.["numericValue"]),
+        interpretation: text(test?.["interpretation"]),
+        resultData: object(test?.["resultData"]) as Record<string, string>,
+        resultNote: text(test?.["resultNote"]),
+      };
       return sendData(
         "patch",
-        `/lab/visits/${visitId}/tests/${testId}/result`,
-        resultForms[testId] ?? {
-          resultStatus: text(test?.["resultStatus"] || "PENDING"),
-          resultNote: text(test?.["resultNote"]),
+        "/lab/visits/" + visitId + "/tests/" + testId + "/result",
+        {
+          resultStatus:
+            resultType === "POSITIVE_NEGATIVE" ? form.resultStatus : "COMPLETED",
+          resultValue: form.resultValue || undefined,
+          numericValue: form.numericValue ? Number(form.numericValue) : undefined,
+          interpretation: form.interpretation || undefined,
+          resultData:
+            resultType === "PANEL" && Object.keys(form.resultData).length
+              ? form.resultData
+              : undefined,
+          resultNote: form.resultNote || undefined,
         },
       );
     },
@@ -1073,7 +1172,7 @@ export function LabPage({
                 />
                 <input
                   className="input pl-10"
-                  placeholder="Raadi magaca ama telefoonka bukaanka"
+                  placeholder="Raadi patient number, magaca ama telefoonka"
                   value={patientSearch}
                   onChange={(event) => setPatientSearch(event.target.value)}
                 />
@@ -1083,6 +1182,7 @@ export function LabPage({
               rows={filteredPatients}
               pageSize={10}
               columns={[
+                { label: "Patient #", render: (r) => <strong>{text(r["patientNumber"])}</strong> },
                 { label: "Patient", render: (r) => <strong>{text(r["name"])}</strong> },
                 { label: "Age", render: (r) => text(r["age"]) },
                 { label: "Sex", render: (r) => text(r["sex"]) },
@@ -1115,7 +1215,10 @@ export function LabPage({
                     pageSize={false}
                     rows={rows(c["tests"])}
                     columns={[
-                      { label: "Test / disease", render: (r) => text(r["name"]) },
+                      { label: "Code", render: (r) => text(r["code"]) },
+                      { label: "Test", render: (r) => text(r["name"]) },
+                      { label: "Result type", render: (r) => text(r["resultType"]) },
+                      { label: "Sample", render: (r) => text(r["sampleType"]) || "—" },
                       {
                         label: "Price",
                         render: (r) => money(r["price"], workspace.tenant.currencyCode),
@@ -1180,6 +1283,54 @@ export function LabPage({
               onChange={(e) => setPatientForm({ ...patientForm, phone: e.target.value })}
             />
           </Field>
+          <Field label="Date of birth">
+            <input
+              className="input"
+              type="date"
+              value={patientForm.dateOfBirth}
+              onChange={(e) => setPatientForm({ ...patientForm, dateOfBirth: e.target.value })}
+            />
+          </Field>
+          <Field label="Address">
+            <input
+              className="input"
+              value={patientForm.address}
+              onChange={(e) => setPatientForm({ ...patientForm, address: e.target.value })}
+            />
+          </Field>
+          <Field label="Emergency contact name">
+            <input
+              className="input"
+              value={patientForm.emergencyContactName}
+              onChange={(e) =>
+                setPatientForm({ ...patientForm, emergencyContactName: e.target.value })
+              }
+            />
+          </Field>
+          <Field label="Emergency contact phone">
+            <input
+              className="input"
+              value={patientForm.emergencyContactPhone}
+              onChange={(e) =>
+                setPatientForm({ ...patientForm, emergencyContactPhone: e.target.value })
+              }
+            />
+          </Field>
+          <Field label="Blood group">
+            <input
+              className="input"
+              placeholder="e.g. O+"
+              value={patientForm.bloodGroup}
+              onChange={(e) => setPatientForm({ ...patientForm, bloodGroup: e.target.value })}
+            />
+          </Field>
+          <Field label="Known allergies">
+            <textarea
+              className="input"
+              value={patientForm.allergies}
+              onChange={(e) => setPatientForm({ ...patientForm, allergies: e.target.value })}
+            />
+          </Field>
           <div className="sm:col-span-2">
             <Field label="Faahfaahin (Notes)">
               <textarea
@@ -1242,6 +1393,79 @@ export function LabPage({
               required
             />
           </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Test code">
+              <input
+                className="input"
+                placeholder="e.g. CBC"
+                value={testForm.code}
+                onChange={(e) => setTestForm({ ...testForm, code: e.target.value })}
+              />
+            </Field>
+            <Field label="Result type">
+              <select
+                className="input"
+                value={testForm.resultType}
+                onChange={(e) => setTestForm({ ...testForm, resultType: e.target.value })}
+              >
+                {["POSITIVE_NEGATIVE", "NUMERIC", "TEXT", "SELECT", "PANEL"].map((value) => (
+                  <option key={value}>{value}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Sample type">
+              <input
+                className="input"
+                placeholder="Blood, urine, stool, swab..."
+                value={testForm.sampleType}
+                onChange={(e) => setTestForm({ ...testForm, sampleType: e.target.value })}
+              />
+            </Field>
+            <Field label="Unit">
+              <input
+                className="input"
+                placeholder="e.g. mg/dL"
+                value={testForm.unit}
+                onChange={(e) => setTestForm({ ...testForm, unit: e.target.value })}
+              />
+            </Field>
+          </div>
+          <Field label="Reference range">
+            <input
+              className="input"
+              value={testForm.referenceRange}
+              onChange={(e) => setTestForm({ ...testForm, referenceRange: e.target.value })}
+            />
+          </Field>
+          <Field label="Description">
+            <textarea
+              className="input"
+              value={testForm.description}
+              onChange={(e) => setTestForm({ ...testForm, description: e.target.value })}
+            />
+          </Field>
+          {testForm.resultType === "SELECT" ? (
+            <Field label="Select options" hint="Comma-separated values.">
+              <input
+                className="input"
+                value={testForm.resultOptions}
+                onChange={(e) => setTestForm({ ...testForm, resultOptions: e.target.value })}
+              />
+            </Field>
+          ) : null}
+          {testForm.resultType === "PANEL" ? (
+            <Field
+              label="Panel components"
+              hint="One component per line: Name | Unit | Reference range"
+            >
+              <textarea
+                className="input"
+                placeholder={"WBC | 10^9/L | 4.0-11.0\nHemoglobin | g/dL | 12-17"}
+                value={testForm.panelComponents}
+                onChange={(e) => setTestForm({ ...testForm, panelComponents: e.target.value })}
+              />
+            </Field>
+          ) : null}
           <Field label="Qiimaha baaritaanka (Price)">
             <input
               className="input"
@@ -1542,56 +1766,165 @@ export function LabPage({
           <Card title="Test results">
             <div className="space-y-3 p-4">
               {visitTests.map((t) => {
-                const f = resultForms[text(t["id"])] ?? {
+                const testId = text(t["id"]);
+                const resultType = text(t["resultType"] || "POSITIVE_NEGATIVE");
+                const catalog = object(t["labTest"]);
+                const panelComponents = rows(catalog["panelComponents"]);
+                const resultOptions = rows(catalog["resultOptions"]);
+                const f = resultForms[testId] ?? {
                   resultStatus: text(t["resultStatus"] || "PENDING"),
+                  resultValue: text(t["resultValue"]),
+                  numericValue: text(t["numericValue"]),
+                  interpretation: text(t["interpretation"]),
+                  resultData: object(t["resultData"]) as Record<string, string>,
                   resultNote: text(t["resultNote"]),
                 };
+                const update = (patch: Partial<typeof f>) =>
+                  setResultForms({ ...resultForms, [testId]: { ...f, ...patch } });
                 return (
                   <div
-                    key={text(t["id"])}
-                    className={`grid gap-3 rounded-xl border p-4 md:grid-cols-[1fr_180px_1fr_auto] ${f.resultStatus === "POSITIVE" ? "border-rose-300 bg-rose-50" : "border-slate-200"}`}
+                    key={testId}
+                    className={
+                      "space-y-3 rounded-xl border p-4 " +
+                      (f.resultStatus === "POSITIVE"
+                        ? "border-rose-300 bg-rose-50"
+                        : "border-slate-200")
+                    }
                   >
-                    <strong>
-                      {text(t["categoryName"])} / {text(t["testName"])}
-                    </strong>
-                    <select
-                      className="input"
-                      disabled={!canResult}
-                      value={f.resultStatus}
-                      onChange={(e) =>
-                        setResultForms({
-                          ...resultForms,
-                          [text(t["id"])]: { ...f, resultStatus: e.target.value },
-                        })
-                      }
-                    >
-                      {["PENDING", "NEGATIVE", "POSITIVE", "INCONCLUSIVE"].map((x) => (
-                        <option key={x}>{x}</option>
-                      ))}
-                    </select>
-                    <input
-                      className="input"
-                      disabled={!canResult}
-                      placeholder="Natiijada faahfaahinteeda (Result note)"
-                      value={f.resultNote}
-                      onChange={(e) =>
-                        setResultForms({
-                          ...resultForms,
-                          [text(t["id"])]: { ...f, resultNote: e.target.value },
-                        })
-                      }
-                    />
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <strong>{text(t["categoryName"])} / {text(t["testName"])}</strong>
+                        <p className="text-xs text-slate-500">
+                          {resultType.replaceAll("_", " ")}
+                          {t["unit"] ? " - " + text(t["unit"]) : ""}
+                          {t["referenceRange"] ? " - Reference: " + text(t["referenceRange"]) : ""}
+                        </p>
+                      </div>
+                      <StatusBadge value={text(t["resultStatus"])} />
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                      {resultType === "POSITIVE_NEGATIVE" ? (
+                        <Field label="Result">
+                          <select
+                            className="input"
+                            disabled={!canResult}
+                            value={f.resultStatus}
+                            onChange={(event) => update({ resultStatus: event.target.value })}
+                          >
+                            {["PENDING", "NEGATIVE", "POSITIVE", "INCONCLUSIVE"].map((value) => (
+                              <option key={value}>{value}</option>
+                            ))}
+                          </select>
+                        </Field>
+                      ) : null}
+                      {resultType === "NUMERIC" ? (
+                        <Field label={"Measured value" + (t["unit"] ? " (" + text(t["unit"]) + ")" : "")}>
+                          <input
+                            className="input"
+                            type="number"
+                            step="any"
+                            disabled={!canResult}
+                            value={f.numericValue}
+                            onChange={(event) => update({ numericValue: event.target.value })}
+                          />
+                        </Field>
+                      ) : null}
+                      {resultType === "TEXT" ? (
+                        <Field label="Result text">
+                          <textarea
+                            className="input"
+                            disabled={!canResult}
+                            value={f.resultValue}
+                            onChange={(event) => update({ resultValue: event.target.value })}
+                          />
+                        </Field>
+                      ) : null}
+                      {resultType === "SELECT" ? (
+                        <Field label="Result">
+                          <select
+                            className="input"
+                            disabled={!canResult}
+                            value={f.resultValue}
+                            onChange={(event) => update({ resultValue: event.target.value })}
+                          >
+                            <option value="">Choose result</option>
+                            {resultOptions.map((option) => (
+                              <option key={text(option)} value={text(option)}>{text(option)}</option>
+                            ))}
+                          </select>
+                        </Field>
+                      ) : null}
+                      <Field label="Interpretation">
+                        <select
+                          className="input"
+                          disabled={!canResult}
+                          value={f.interpretation}
+                          onChange={(event) => update({ interpretation: event.target.value })}
+                        >
+                          <option value="">Not specified</option>
+                          {["NORMAL", "ABNORMAL", "HIGH", "LOW", "POSITIVE", "NEGATIVE", "CRITICAL", "INCONCLUSIVE", "BORDERLINE"].map((value) => (
+                            <option key={value}>{value}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Result notes">
+                        <input
+                          className="input"
+                          disabled={!canResult}
+                          value={f.resultNote}
+                          onChange={(event) => update({ resultNote: event.target.value })}
+                        />
+                      </Field>
+                    </div>
+
+                    {resultType === "PANEL" ? (
+                      <div className="grid gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {panelComponents.map((component) => {
+                          const name = text(component["name"]);
+                          return (
+                            <Field
+                              key={name}
+                              label={
+                                name +
+                                (component["unit"] ? " (" + text(component["unit"]) + ")" : "")
+                              }
+                              hint={
+                                component["referenceRange"]
+                                  ? "Reference: " + text(component["referenceRange"])
+                                  : "Reference range not configured"
+                              }
+                            >
+                              <input
+                                className="input"
+                                disabled={!canResult}
+                                value={f.resultData[name] ?? ""}
+                                onChange={(event) =>
+                                  update({
+                                    resultData: {
+                                      ...f.resultData,
+                                      [name]: event.target.value,
+                                    },
+                                  })
+                                }
+                              />
+                            </Field>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
                     {canResult ? (
                       <button
                         className="btn-primary"
                         onClick={() =>
                           markResult.mutate({
                             visitId: text(selectedVisit?.["id"]),
-                            testId: text(t["id"]),
+                            testId,
                           })
                         }
                       >
-                        Save
+                        Save result
                       </button>
                     ) : null}
                   </div>

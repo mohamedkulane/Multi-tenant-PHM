@@ -720,8 +720,8 @@ export function ProductsPage({
       });
     },
   });
-  const canManage = ["OWNER", "ADMIN", "MANAGER", "PHARMACIST"].includes(principal.role);
-  const canConfigureBranch = ["OWNER", "ADMIN", "MANAGER"].includes(principal.role);
+  const canManage = ["OWNER", "ADMIN", "PHARMACIST"].includes(principal.role);
+  const canConfigureBranch = ["OWNER", "ADMIN"].includes(principal.role);
   const canArchiveGlobally = ["OWNER", "ADMIN"].includes(principal.role);
   const beginEdit = (product: Row) => {
     setEditing(product);
@@ -1321,7 +1321,7 @@ export function InventoryPage({
   const suppliers = useQuery({
     queryKey: ["suppliers", "inventory-form"],
     queryFn: () => getData<Row[]>("/suppliers"),
-    enabled: principal.role !== "CASHIER",
+    enabled: principal.role !== "RECEPTIONIST",
   });
   const query = useQuery({
     queryKey: ["inventory", tab, branch?.id],
@@ -1446,7 +1446,7 @@ export function InventoryPage({
     0,
   );
   if (!branch) return <EmptyState title="Choose a branch" />;
-  const canManage = ["OWNER", "ADMIN", "MANAGER", "PHARMACIST"].includes(principal.role);
+  const canManage = ["OWNER", "ADMIN", "PHARMACIST"].includes(principal.role);
 
   const openBatchAction = (next: "adjust" | "expiry" | "transfer", row: Row) => {
     if (next === "transfer" && text(row["expiryDate"]).slice(0, 10) < today) {
@@ -1910,6 +1910,8 @@ export function SalesPage({
   const [productSearch, setProductSearch] = useState("");
   const [productView, setProductView] = useState<"grid" | "list">("grid");
   const [productPage, setProductPage] = useState(1);
+  const [selectedPrescriptionId, setSelectedPrescriptionId] = useState("");
+  const [selectedPrescriptionItemId, setSelectedPrescriptionItemId] = useState("");
   const [saleAction, setSaleAction] = useState<"details" | "payment" | "return" | "void" | null>(
     null,
   );
@@ -1950,6 +1952,12 @@ export function SalesPage({
     queryFn: () =>
       getData<Row[]>(`/sales?branchId=${branch!.id}&q=${encodeURIComponent(salesSearch)}`),
     enabled: Boolean(branch),
+  });
+  const prescriptions = useQuery({
+    queryKey: ["pharmacy-prescriptions", branch?.id],
+    queryFn: () =>
+      getData<Row[]>("/clinic/prescriptions?branchId=" + branch!.id),
+    enabled: Boolean(branch) && ["OWNER", "ADMIN", "PHARMACIST"].includes(principal.role),
   });
   const saleDetail = useQuery({
     queryKey: ["sale-detail", selectedSale?.["id"]],
@@ -2013,16 +2021,21 @@ export function SalesPage({
       sendData<Row>("post", "/sales", {
         branchId: branch!.id,
         customerId: form.customerId || undefined,
+        clinicVisitId: selectedPrescription
+          ? text(selectedPrescription["clinicVisitId"])
+          : undefined,
+        prescriptionId: selectedPrescriptionId || undefined,
         customerName: form.customerName,
         customerPhone: form.customerPhone || undefined,
         discount: form.discount,
         amountPaid: form.amountPaid,
         ...(Number(form.amountPaid) > 0 ? { paymentMethod: form.paymentMethod } : {}),
         idempotencyKey: idempotency("sale"),
-        lines: cart.map(({ productId, packageCode, packageQuantity }) => ({
+        lines: cart.map(({ productId, packageCode, packageQuantity, prescriptionItemId }) => ({
           productId,
           packageCode,
           packageQuantity,
+          prescriptionItemId,
         })),
       }),
     onSuccess: async (sale) => {
@@ -2037,6 +2050,8 @@ export function SalesPage({
         discount: "0",
       });
       setCart([]);
+      setSelectedPrescriptionId("");
+      setSelectedPrescriptionItemId("");
       showToast({
         title: "Sale completed successfully",
         message: "Stock and invoice records were updated.",
@@ -2044,6 +2059,12 @@ export function SalesPage({
       await client.invalidateQueries({ queryKey: ["sales"] });
     },
   });
+  const selectedPrescription = (prescriptions.data ?? []).find(
+    (item) => text(item["id"]) === selectedPrescriptionId,
+  );
+  const selectedPrescriptionItems = rows(selectedPrescription?.["items"]).filter(
+    (item) => !["DISPENSED", "CANCELLED"].includes(text(item["status"])),
+  );
   const selected = (products.data ?? []).find((item) => text(item["id"]) === form.productId);
   const packages = rows(selected?.["packages"]);
   const selectedPackage = packages.find((item) => text(item["code"]) === form.packageCode);
@@ -2141,6 +2162,7 @@ export function SalesPage({
         packageQuantity: Number(form.quantity),
         unitPrice: Number(selectedPackage["salePrice"]),
         unitsPerPackage: text(selectedPackage["unitsPerPackage"]),
+        prescriptionItemId: selectedPrescriptionItemId || undefined,
       }),
     );
     setForm((current) => ({
@@ -2159,7 +2181,7 @@ export function SalesPage({
         description="Atomic checkout with conditional stock decrement and immutable invoice evidence."
       />
       <div className="space-y-6">
-        {principal.role !== "AUDITOR" ? (
+        {principal.role !== "LAB_TECHNICIAN" ? (
           <form
             className="space-y-5"
             onSubmit={(event) => {
@@ -2176,6 +2198,89 @@ export function SalesPage({
               checkout.mutate();
             }}
           >
+            <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 shadow-sm sm:p-5">
+              <div className="mb-3">
+                <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-emerald-700">
+                  Pharmacy prescription queue
+                </p>
+                <h2 className="mt-1 text-lg font-bold text-slate-950">
+                  Link this sale to a clinical prescription
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Normal walk-in sales remain available. Map each prescribed medicine to the
+                  actual stocked product being dispensed.
+                </p>
+              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Field label="Pending prescription">
+                  <select
+                    className="input"
+                    value={selectedPrescriptionId}
+                    onChange={(event) => {
+                      const prescription = (prescriptions.data ?? []).find(
+                        (item) => text(item["id"]) === event.target.value,
+                      );
+                      const clinicVisit = (prescription?.["clinicVisit"] ?? {}) as Row;
+                      const patient = (clinicVisit["patient"] ?? {}) as Row;
+                      setSelectedPrescriptionId(event.target.value);
+                      setSelectedPrescriptionItemId("");
+                      setCart([]);
+                      setForm((current) => ({
+                        ...current,
+                        customerName: prescription ? text(patient["name"]) : "Walk-in Customer",
+                        customerPhone: prescription ? text(patient["phone"]) : "",
+                      }));
+                    }}
+                  >
+                    <option value="">Normal walk-in sale</option>
+                    {(prescriptions.data ?? [])
+                      .filter((item) => !["DISPENSED", "CANCELLED"].includes(text(item["status"])))
+                      .map((item) => {
+                        const clinicVisit = (item["clinicVisit"] ?? {}) as Row;
+                        const patient = (clinicVisit["patient"] ?? {}) as Row;
+                        return (
+                          <option key={text(item["id"])} value={text(item["id"])}>
+                            {text(item["prescriptionNumber"])} - {text(patient["name"])} -{" "}
+                            {text(item["status"])}
+                          </option>
+                        );
+                      })}
+                  </select>
+                </Field>
+                <Field
+                  label="Prescribed item being dispensed"
+                  hint={
+                    selectedPrescription
+                      ? "Choose an item, then select its actual inventory product below."
+                      : "Choose a prescription first."
+                  }
+                >
+                  <select
+                    className="input"
+                    disabled={!selectedPrescription}
+                    value={selectedPrescriptionItemId}
+                    onChange={(event) => setSelectedPrescriptionItemId(event.target.value)}
+                  >
+                    <option value="">Choose prescribed medicine</option>
+                    {selectedPrescriptionItems.map((item) => (
+                      <option key={text(item["id"])} value={text(item["id"])}>
+                        {text(item["medicineName"])} {text(item["strength"])} -{" "}
+                        {text(item["dosage"])} - {text(item["frequency"])}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              {selectedPrescription ? (
+                <div className="mt-4 flex flex-wrap gap-2 text-sm">
+                  <StatusBadge value={text(selectedPrescription["status"])} />
+                  <span className="rounded-full bg-white px-3 py-1 font-semibold text-slate-700">
+                    {selectedPrescriptionItems.length} item(s) remaining
+                  </span>
+                </div>
+              ) : null}
+            </section>
+
             <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_0.8fr_0.8fr]">
                 <Field label="Buugga macmiilka (Customer account)">
@@ -2721,14 +2826,14 @@ export function SalesPage({
                       <button className="btn-secondary" onClick={() => openSale(row, "details")}>
                         View
                       </button>
-                      {principal.role !== "AUDITOR" &&
+                      {principal.role !== "LAB_TECHNICIAN" &&
                       row["status"] !== "VOIDED" &&
                       Number(row["remainingBalance"]) > 0 ? (
                         <button className="btn-secondary" onClick={() => openSale(row, "payment")}>
                           Payment
                         </button>
                       ) : null}
-                      {principal.role !== "AUDITOR" && row["status"] !== "VOIDED" ? (
+                      {principal.role !== "LAB_TECHNICIAN" && row["status"] !== "VOIDED" ? (
                         <button className="btn-secondary" onClick={() => openSale(row, "return")}>
                           Return
                         </button>
@@ -2780,7 +2885,7 @@ export function SalesPage({
               <button className="btn-secondary" onClick={() => window.print()}>
                 <Printer size={16} /> Print invoice
               </button>
-              {principal.role !== "AUDITOR" && saleDetail.data["status"] !== "VOIDED" ? (
+              {principal.role !== "LAB_TECHNICIAN" && saleDetail.data["status"] !== "VOIDED" ? (
                 <>
                   {Number(saleDetail.data["remainingBalance"]) > 0 ? (
                     <button
@@ -3167,7 +3272,7 @@ export function DebtsPage({
     },
   });
   if (!branch) return <EmptyState title="Choose a branch" />;
-  const canCollect = ["OWNER", "ADMIN", "MANAGER"].includes(principal.role);
+  const canCollect = ["OWNER", "ADMIN"].includes(principal.role);
   return (
     <>
       <PageHeader
@@ -3337,7 +3442,7 @@ export function ExpensesPage({
     expenseDate: today,
     note: "",
   });
-  const canManage = ["OWNER", "ADMIN", "MANAGER"].includes(principal.role);
+  const canManage = ["OWNER", "ADMIN"].includes(principal.role);
   const canVoid = ["OWNER", "ADMIN"].includes(principal.role);
   const categories = useQuery({
     queryKey: ["expense-categories"],
@@ -3780,7 +3885,7 @@ export function StaffPage({
     active: true,
   });
   const [memberForm, setMemberForm] = useState({
-    role: "CASHIER",
+    role: "RECEPTIONIST",
     status: "ACTIVE",
     allBranches: false,
     branchIds: workspace.branches[0]?.id ? [workspace.branches[0].id] : ([] as string[]),
@@ -3788,7 +3893,7 @@ export function StaffPage({
   const [form, setForm] = useState({
     email: "",
     username: "",
-    role: "CASHIER",
+    role: "RECEPTIONIST",
     allBranches: false,
     branchIds: workspace.branches[0]?.id ? [workspace.branches[0].id] : ([] as string[]),
   });
@@ -3797,14 +3902,14 @@ export function StaffPage({
     email: "",
     username: "",
     password: "",
-    role: "CASHIER",
+    role: "RECEPTIONIST",
     allBranches: false,
     branchIds: workspace.branches[0]?.id ? [workspace.branches[0].id] : [...principal.branchIds],
   });
   const staffRoles =
     principal.role === "OWNER"
-      ? ["ADMIN", "MANAGER", "PHARMACIST", "CASHIER", "AUDITOR"]
-      : ["MANAGER", "PHARMACIST", "CASHIER", "AUDITOR"];
+      ? ["ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "LAB_TECHNICIAN"]
+      : ["DOCTOR", "RECEPTIONIST", "PHARMACIST", "LAB_TECHNICIAN"];
   const canManage = ["OWNER", "ADMIN"].includes(principal.role);
   const members = useQuery({
     queryKey: ["members"],
@@ -3835,7 +3940,7 @@ export function StaffPage({
         email: "",
         username: "",
         password: "",
-        role: "CASHIER",
+        role: "RECEPTIONIST",
         allBranches: false,
         branchIds: workspace.branches[0]?.id
           ? [workspace.branches[0].id]
@@ -4337,7 +4442,7 @@ export function StaffPage({
                 })
               }
             >
-              {["ADMIN", "MANAGER", "PHARMACIST", "CASHIER", "AUDITOR"].map((item) => (
+              {["ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "LAB_TECHNICIAN"].map((item) => (
                 <option key={item}>{item}</option>
               ))}
             </select>
@@ -4502,7 +4607,7 @@ export function StaffPage({
                 })
               }
             >
-              {["ADMIN", "MANAGER", "PHARMACIST", "CASHIER", "AUDITOR"].map((item) => (
+              {["ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "LAB_TECHNICIAN"].map((item) => (
                 <option key={item}>{item}</option>
               ))}
             </select>

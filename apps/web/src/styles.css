@@ -66,6 +66,114 @@ button:disabled {
   border-color: var(--tenant-primary);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--tenant-primary) 18%, transparent);
 }
+
+.dialog-panel form,
+.dialog-panel label {
+  min-width: 0;
+}
+
+.dialog-panel input:not([type="checkbox"]):not([type="radio"]),
+.dialog-panel select,
+.dialog-panel textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.7rem 0.8rem;
+  color: #0f172a;
+  outline: none;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.dialog-panel textarea {
+  min-height: 6.5rem;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.dialog-panel input:not([type="checkbox"]):not([type="radio"]):focus,
+.dialog-panel select:focus,
+.dialog-panel textarea:focus {
+  border-color: var(--tenant-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tenant-primary) 18%, transparent);
+}
+
+.dialog-panel input::placeholder,
+.dialog-panel textarea::placeholder {
+  color: #94a3b8;
+}
+
+.dialog-panel input[type="checkbox"],
+.dialog-panel input[type="radio"] {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  accent-color: var(--tenant-primary);
+}
+
+.data-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.data-table th {
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  padding: 0.8rem 1rem;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.data-table td {
+  border-bottom: 1px solid #eef2f7;
+  padding: 0.9rem 1rem;
+  color: #334155;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.data-table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.data-table td:first-child,
+.data-table td:last-child {
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .dialog-panel .btn-primary,
+  .dialog-panel .btn-secondary {
+    width: 100%;
+  }
+
+  .data-table {
+    min-width: 700px;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 0.75rem;
+  }
+}
+
 .btn-primary,
 .btn-secondary {
   display: inline-flex;
@@ -409,5 +517,90 @@ button:disabled {
   }
   .dialog-scroll {
     overflow: visible !important;
+  }
+}
+
+
+.clinical-visit-page input:not([type="checkbox"]):not([type="radio"]),
+.clinical-visit-page select,
+.clinical-visit-page textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.7rem 0.8rem;
+  color: #0f172a;
+  outline: none;
+}
+
+.clinical-visit-page textarea {
+  min-height: 7rem;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.clinical-visit-page input:focus,
+.clinical-visit-page select:focus,
+.clinical-visit-page textarea:focus {
+  border-color: var(--tenant-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tenant-primary) 18%, transparent);
+}
+
+.clinical-visit-page input[type="checkbox"],
+.clinical-visit-page input[type="radio"] {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  accent-color: var(--tenant-primary);
+}
+
+.clinical-tabs {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  border-bottom: 1px solid #dbe4ea;
+  padding-bottom: 0.75rem;
+  scrollbar-width: thin;
+}
+
+.clinical-tabs button {
+  min-height: 2.75rem;
+  flex: 0 0 auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.65rem 1rem;
+  color: #475569;
+  font-size: 0.875rem;
+  font-weight: 750;
+}
+
+.clinical-tabs button.is-active {
+  border-color: var(--tenant-primary);
+  background: var(--tenant-primary);
+  color: #fff;
+}
+
+@media (max-width: 640px) {
+  .clinical-visit-page .btn-primary,
+  .clinical-visit-page .btn-secondary {
+    width: 100%;
+  }
+}
+
+@media print {
+  .clinical-tabs,
+  .clinical-visit-page button,
+  .clinical-visit-page input,
+  .clinical-visit-page select,
+  .clinical-visit-page textarea {
+    display: none !important;
+  }
+
+  .clinical-visit-page {
+    color: #000;
+    background: #fff;
   }
 }

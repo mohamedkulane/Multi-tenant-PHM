@@ -18,6 +18,7 @@ export interface CheckoutLineInput {
   productId: string;
   packageCode: string;
   packageQuantity: number;
+  prescriptionItemId?: string | undefined;
 }
 
 export interface CheckoutInput {
@@ -25,6 +26,8 @@ export interface CheckoutInput {
   customerName: string;
   customerPhone?: string | undefined;
   customerId?: string | undefined;
+  clinicVisitId?: string | undefined;
+  prescriptionId?: string | undefined;
   discount: string;
   amountPaid: string;
   paymentMethod?: PaymentMethod | undefined;
@@ -106,6 +109,8 @@ interface LockedSale {
   amount_paid: Prisma.Decimal;
   remaining_balance: Prisma.Decimal;
   returned_total: Prisma.Decimal;
+  clinic_visit_id: string | null;
+  prescription_id: string | null;
 }
 
 const saleInclude = {
@@ -198,7 +203,7 @@ async function withFinanceTransaction<T>(
 
 async function lockSale(transaction: Prisma.TransactionClient, tenantId: string, saleId: string) {
   const rows = await transaction.$queryRaw<LockedSale[]>(Prisma.sql`
-    SELECT id, branch_id, status, grand_total, amount_paid, remaining_balance, returned_total
+    SELECT id, branch_id, status, grand_total, amount_paid, remaining_balance, returned_total, clinic_visit_id, prescription_id
     FROM public.sales
     WHERE tenant_id = ${tenantId}::uuid AND id = ${saleId}::uuid
     FOR UPDATE
@@ -328,7 +333,44 @@ export class PrismaSalesService implements SalesService {
         });
       }
 
+      const prescription = input.prescriptionId
+        ? await transaction.prescription.findUnique({
+            where: {
+              tenantId_id: { tenantId: principal.tenantId, id: input.prescriptionId },
+            },
+            include: { items: true, clinicVisit: { include: { patient: true } } },
+          })
+        : null;
+      if (
+        input.prescriptionId &&
+        (!prescription ||
+          prescription.branchId !== input.branchId ||
+          ["DISPENSED", "CANCELLED"].includes(prescription.status))
+      )
+        throw new AppError({
+          statusCode: 404,
+          code: "PRESCRIPTION_NOT_DISPENSABLE",
+          message: "An active prescription for this branch was not found",
+        });
+      if (
+        prescription &&
+        input.clinicVisitId &&
+        prescription.clinicVisitId !== input.clinicVisitId
+      )
+        throw new AppError({
+          statusCode: 400,
+          code: "PRESCRIPTION_VISIT_MISMATCH",
+          message: "Prescription does not belong to the selected clinic visit",
+        });
+      if (!prescription && input.lines.some((line) => line.prescriptionItemId))
+        throw new AppError({
+          statusCode: 400,
+          code: "PRESCRIPTION_REQUIRED",
+          message: "Choose a prescription before mapping prescribed items",
+        });
+
       const seenLineKeys = new Set<string>();
+      const seenPrescriptionItems = new Set<string>();
       const reservedByBatch = new Map<string, bigint>();
       const businessDate = businessDateUtc();
       const preparedLines: Array<{
@@ -345,6 +387,7 @@ export class PrismaSalesService implements SalesService {
         unitPrice: bigint;
         subtotal: bigint;
         weightedUnitCost: bigint;
+        prescriptionItemId: string | null;
         allocations: Array<{ batch: LockedBatch; quantity: bigint; unitCost: bigint }>;
       }> = [];
 
@@ -358,6 +401,21 @@ export class PrismaSalesService implements SalesService {
           });
         }
         seenLineKeys.add(lineKey);
+        if (line.prescriptionItemId) {
+          if (seenPrescriptionItems.has(line.prescriptionItemId))
+            throw new AppError({
+              statusCode: 400,
+              code: "DUPLICATE_PRESCRIPTION_ITEM",
+              message: "Map each prescription item only once per sale",
+            });
+          if (!prescription?.items.some((item) => item.id === line.prescriptionItemId))
+            throw new AppError({
+              statusCode: 404,
+              code: "PRESCRIPTION_ITEM_NOT_FOUND",
+              message: "Prescription item not found",
+            });
+          seenPrescriptionItems.add(line.prescriptionItemId);
+        }
 
         const packaging = await transaction.productPackage.findUnique({
           where: {
@@ -458,6 +516,7 @@ export class PrismaSalesService implements SalesService {
           unitPrice,
           subtotal,
           weightedUnitCost,
+          prescriptionItemId: line.prescriptionItemId ?? null,
           allocations,
         });
       }
@@ -548,6 +607,8 @@ export class PrismaSalesService implements SalesService {
           invoiceNumber,
           businessDate,
           customerId: customer?.id ?? null,
+          clinicVisitId: prescription?.clinicVisitId ?? input.clinicVisitId ?? null,
+          prescriptionId: prescription?.id ?? null,
           customerName: resolvedCustomerName,
           customerPhone: resolvedCustomerPhone ?? null,
           subtotal: formatMoney(subtotal),
@@ -664,6 +725,78 @@ export class PrismaSalesService implements SalesService {
           },
         });
       }
+      if (prescription) {
+        for (const line of preparedLines.filter((item) => item.prescriptionItemId)) {
+          const prescribedItem = prescription.items.find(
+            (item) => item.id === line.prescriptionItemId,
+          )!;
+          const dispensedQuantity =
+            Number(prescribedItem.dispensedQuantity.toString()) + line.packageQuantity;
+          const requestedQuantity = prescribedItem.quantity
+            ? Number(prescribedItem.quantity.toString())
+            : null;
+          await transaction.prescriptionItem.update({
+            where: {
+              tenantId_id: {
+                tenantId: principal.tenantId,
+                id: prescribedItem.id,
+              },
+            },
+            data: {
+              mappedProductId: line.productId,
+              mappedPackageCode: line.packageCode,
+              dispensedQuantity,
+              status:
+                requestedQuantity && dispensedQuantity < requestedQuantity
+                  ? "PARTIALLY_DISPENSED"
+                  : "DISPENSED",
+            },
+          });
+        }
+        const currentItems = await transaction.prescriptionItem.findMany({
+          where: { tenantId: principal.tenantId, prescriptionId: prescription.id },
+          select: { status: true },
+        });
+        const allDispensed = currentItems.every((item) =>
+          ["DISPENSED", "CANCELLED"].includes(item.status),
+        );
+        await transaction.prescription.update({
+          where: {
+            tenantId_id: { tenantId: principal.tenantId, id: prescription.id },
+          },
+          data: {
+            status: allDispensed ? "DISPENSED" : "PARTIALLY_DISPENSED",
+            dispensedAt: allDispensed ? new Date() : null,
+          },
+        });
+        await transaction.clinicVisit.update({
+          where: {
+            tenantId_id: {
+              tenantId: principal.tenantId,
+              id: prescription.clinicVisitId,
+            },
+          },
+          data: {
+            status: allDispensed && remainingBalance === 0n ? "COMPLETED" : "AT_PHARMACY",
+            ...(allDispensed && remainingBalance === 0n ? { completedAt: new Date() } : {}),
+          },
+        });
+        await transaction.auditLog.create({
+          data: {
+            tenantId: principal.tenantId,
+            branchId: input.branchId,
+            actorUserId: principal.userId,
+            actorMembershipId: principal.membershipId,
+            ...(requestId ? { requestId } : {}),
+            action: allDispensed
+              ? "PRESCRIPTION_DISPENSED"
+              : "PRESCRIPTION_PARTIALLY_DISPENSED",
+            entityType: "prescription",
+            entityId: prescription.id,
+            metadata: { saleId, mappedItemCount: seenPrescriptionItems.size },
+          },
+        });
+      }
       await transaction.auditLog.create({
         data: {
           tenantId: principal.tenantId,
@@ -674,7 +807,7 @@ export class PrismaSalesService implements SalesService {
           action: "SALE_COMPLETED",
           entityType: "sale",
           entityId: saleId,
-          metadata: { invoiceNumber, lineCount: preparedLines.length },
+          metadata: { invoiceNumber, lineCount: preparedLines.length, prescriptionId: prescription?.id ?? null },
           after: {
             grandTotal: formatMoney(grandTotal),
             amountPaid: formatMoney(amountPaid),
@@ -757,6 +890,35 @@ export class PrismaSalesService implements SalesService {
             status: debtStatus(balance, debt.dueDate),
           },
         });
+      }
+      if (balance === 0n && sale.prescription_id && sale.clinic_visit_id) {
+        const pendingItems = await transaction.prescriptionItem.count({
+          where: {
+            tenantId: principal.tenantId,
+            prescriptionId: sale.prescription_id,
+            status: { notIn: ["DISPENSED", "CANCELLED"] },
+          },
+        });
+        if (pendingItems === 0) {
+          await transaction.prescription.update({
+            where: {
+              tenantId_id: {
+                tenantId: principal.tenantId,
+                id: sale.prescription_id,
+              },
+            },
+            data: { status: "DISPENSED", dispensedAt: new Date() },
+          });
+          await transaction.clinicVisit.update({
+            where: {
+              tenantId_id: {
+                tenantId: principal.tenantId,
+                id: sale.clinic_visit_id,
+              },
+            },
+            data: { status: "COMPLETED", completedAt: new Date() },
+          });
+        }
       }
       await transaction.auditLog.create({
         data: {

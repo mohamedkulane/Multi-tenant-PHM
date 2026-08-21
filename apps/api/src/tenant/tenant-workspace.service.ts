@@ -164,7 +164,7 @@ export class TenantWorkspaceService {
             statusCode: 400,
             code: "ROLE_REQUIRES_BRANCH_ASSIGNMENT",
             message:
-              "Managers, pharmacists, cashiers and auditors must be assigned to specific branches",
+              "Doctors, receptionists, pharmacists and lab technicians must be assigned to specific branches",
           });
         }
         const branchIds = [...new Set(input.branchIds)];
@@ -450,7 +450,7 @@ export class TenantWorkspaceService {
             statusCode: 400,
             code: "ROLE_REQUIRES_BRANCH_ASSIGNMENT",
             message:
-              "Managers, pharmacists, cashiers and auditors must be assigned to specific branches",
+              "Doctors, receptionists, pharmacists and lab technicians must be assigned to specific branches",
           });
         }
         if (
@@ -719,7 +719,7 @@ export class TenantWorkspaceService {
             statusCode: 400,
             code: "ROLE_REQUIRES_BRANCH_ASSIGNMENT",
             message:
-              "Managers, pharmacists, cashiers and auditors must be assigned to specific branches",
+              "Doctors, receptionists, pharmacists and lab technicians must be assigned to specific branches",
           });
         }
         if (

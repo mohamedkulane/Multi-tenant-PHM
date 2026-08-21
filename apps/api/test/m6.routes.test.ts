@@ -306,7 +306,7 @@ describe("M6 platform API routes", () => {
       .send({
         targetType: "ROLE",
         tenantId,
-        role: "MANAGER",
+        role: "DOCTOR",
         title: "Scheduled maintenance",
         message: "The platform will be maintained tonight.",
       });
@@ -314,7 +314,7 @@ describe("M6 platform API routes", () => {
     expect(response.status).toBe(201);
     expect(sendBroadcast).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ targetType: "ROLE", tenantId, role: "MANAGER" }),
+      expect.objectContaining({ targetType: "ROLE", tenantId, role: "DOCTOR" }),
       expect.any(String),
     );
   });

@@ -4,7 +4,7 @@ import { roleHasPermission, type Permission } from "../src/auth/permissions.js";
 import { canAccessBranch } from "../src/middleware/authorization.js";
 
 describe("tenant role permissions", () => {
-  it.each<TenantRole>(["OWNER", "ADMIN", "MANAGER", "PHARMACIST", "CASHIER", "AUDITOR"])(
+  it.each<TenantRole>(["OWNER", "ADMIN", "DOCTOR", "PHARMACIST", "RECEPTIONIST", "LAB_TECHNICIAN"])(
     "%s can load the tenant workspace",
     (role) => {
       expect(roleHasPermission(role, "tenant.read")).toBe(true);
@@ -13,14 +13,22 @@ describe("tenant role permissions", () => {
   it.each<[TenantRole, Permission, boolean]>([
     ["OWNER", "tenant.manage", true],
     ["ADMIN", "tenant.manage", false],
-    ["MANAGER", "sale.void", true],
+    ["DOCTOR", "clinic.consult", true],
     ["PHARMACIST", "inventory.manage", true],
-    ["CASHIER", "audit.read", false],
-    ["CASHIER", "customer.manage", true],
-    ["PHARMACIST", "lab.manage", false],
+    ["RECEPTIONIST", "audit.read", false],
+    ["RECEPTIONIST", "customer.manage", true],
+    ["PHARMACIST", "clinic.prescribe", false],
     ["ADMIN", "supplier.manage", true],
-    ["AUDITOR", "lab.manage", false],
-    ["AUDITOR", "sale.create", false],
+    ["LAB_TECHNICIAN", "lab.result", true],
+    ["LAB_TECHNICIAN", "sale.create", false],
+    ["LAB_TECHNICIAN", "prescription.create", false],
+    ["LAB_TECHNICIAN", "clinic.examine", false],
+    ["DOCTOR", "report.read", false],
+    ["DOCTOR", "sale.read", false],
+    ["DOCTOR", "expense.read", false],
+    ["RECEPTIONIST", "sale.read", false],
+    ["PHARMACIST", "diagnosis.create", false],
+    ["PHARMACIST", "report.read", false],
   ])("%s / %s is %s", (role, permission, expected) => {
     expect(roleHasPermission(role, permission)).toBe(expected);
   });
@@ -48,17 +56,17 @@ describe("branch role scope", () => {
   });
 
   it("keeps every other role inside assigned branches even with a legacy all-branches flag", () => {
-    expect(canAccessBranch({ ...principal, role: "MANAGER", allBranches: true }, "branch-b")).toBe(
+    expect(canAccessBranch({ ...principal, role: "DOCTOR", allBranches: true }, "branch-b")).toBe(
       false,
     );
     expect(
       canAccessBranch({ ...principal, role: "PHARMACIST", allBranches: true }, "branch-a"),
     ).toBe(true);
-    expect(canAccessBranch({ ...principal, role: "CASHIER", allBranches: true }, "branch-b")).toBe(
-      false,
-    );
-    expect(canAccessBranch({ ...principal, role: "AUDITOR", allBranches: true }, "branch-b")).toBe(
-      false,
-    );
+    expect(
+      canAccessBranch({ ...principal, role: "RECEPTIONIST", allBranches: true }, "branch-b"),
+    ).toBe(false);
+    expect(
+      canAccessBranch({ ...principal, role: "LAB_TECHNICIAN", allBranches: true }, "branch-b"),
+    ).toBe(false);
   });
 });

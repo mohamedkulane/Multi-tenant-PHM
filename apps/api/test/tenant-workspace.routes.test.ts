@@ -58,7 +58,7 @@ function service() {
       tenantId: principal.tenantId,
       email: "cashier@example.test",
       username: "cashier",
-      role: "CASHIER",
+      role: "RECEPTIONIST",
       allBranches: true,
       tokenHash: "a".repeat(64),
       expiresAt: new Date("2030-01-01T00:00:00Z"),
@@ -79,7 +79,7 @@ function service() {
   } as never);
   vi.spyOn(workspace, "updateMember").mockResolvedValue({
     id: "10000000-0000-4000-8000-000000000007",
-    role: "MANAGER",
+    role: "DOCTOR",
     allBranches: false,
   } as never);
   vi.spyOn(workspace, "updateTenantSettings").mockResolvedValue({
@@ -112,7 +112,7 @@ describe("tenant workspace routes", () => {
       .send({
         email: "cashier@example.test",
         username: "cashier",
-        role: "CASHIER",
+        role: "RECEPTIONIST",
         allBranches: false,
         branchIds: ["10000000-0000-4000-8000-000000000005"],
       });
@@ -149,13 +149,13 @@ describe("tenant workspace routes", () => {
       .patch("/api/v1/tenant/members/10000000-0000-4000-8000-000000000007")
       .set("Cookie", "phms_session=test")
       .send({
-        role: "MANAGER",
+        role: "DOCTOR",
         allBranches: false,
         branchIds: ["10000000-0000-4000-8000-000000000005"],
       });
 
     expect(response.status).toBe(200);
-    expect(response.body.data.role).toBe("MANAGER");
+    expect(response.body.data.role).toBe("DOCTOR");
   });
 
   it("updates owner-controlled tenant and branding settings", async () => {

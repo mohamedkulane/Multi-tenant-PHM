@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { LabResultStatus, PaymentMethod } from "@prisma/client";
+import type { LabInterpretation, LabResultStatus, LabResultType, PaymentMethod, Prisma } from "@prisma/client";
 import type { AuthenticatedPrincipal } from "../auth/auth.types.js";
 import { prisma } from "../database/prisma.js";
 import { setTransactionContext, withTenantContext } from "../database/tenant-context.js";
@@ -11,8 +11,28 @@ export interface PatientInput {
   name: string;
   age: number;
   sex?: string | undefined;
+  dateOfBirth?: Date | undefined;
   phone?: string | undefined;
+  address?: string | undefined;
+  emergencyContactName?: string | undefined;
+  emergencyContactPhone?: string | undefined;
+  bloodGroup?: string | undefined;
+  allergies?: string | undefined;
   notes?: string | undefined;
+}
+
+export interface LabTestInput {
+  categoryId: string;
+  code?: string | undefined;
+  name: string;
+  description?: string | undefined;
+  price: string;
+  sampleType?: string | undefined;
+  resultType: LabResultType;
+  unit?: string | undefined;
+  referenceRange?: string | undefined;
+  resultOptions?: Prisma.InputJsonValue | undefined;
+  panelComponents?: Prisma.InputJsonValue | undefined;
 }
 
 export interface VisitInput {
@@ -38,6 +58,10 @@ function text(value: string | undefined) {
   return value?.trim() || null;
 }
 
+function jsonValue(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
+
 function requireBranch(principal: AuthenticatedPrincipal, branchId: string) {
   if (!canAccessBranch(principal, branchId)) {
     throw new AppError({
@@ -50,7 +74,7 @@ function requireBranch(principal: AuthenticatedPrincipal, branchId: string) {
 
 const visitInclude = {
   patient: true,
-  tests: { orderBy: { categoryName: "asc" as const } },
+  tests: { include: { labTest: true }, orderBy: { categoryName: "asc" as const } },
   payments: { orderBy: { createdAt: "asc" as const } },
 };
 
@@ -93,10 +117,7 @@ export class LabService {
     });
   }
 
-  async createTest(
-    principal: AuthenticatedPrincipal,
-    input: { categoryId: string; name: string; price: string },
-  ) {
+  async createTest(principal: AuthenticatedPrincipal, input: LabTestInput) {
     return withTenantContext(prisma, principal, async (transaction) => {
       const category = await transaction.labCategory.findUnique({
         where: { tenantId_id: { tenantId: principal.tenantId, id: input.categoryId } },
@@ -111,8 +132,18 @@ export class LabService {
         data: {
           tenantId: principal.tenantId,
           categoryId: input.categoryId,
+          code: input.code?.trim().toUpperCase() ?? "LT-" + randomUUID().slice(0, 8).toUpperCase(),
           name: input.name.trim(),
+          description: text(input.description),
           price: formatMoney(parseMoney(input.price, "lab test price")),
+          sampleType: text(input.sampleType),
+          resultType: input.resultType,
+          unit: text(input.unit),
+          referenceRange: text(input.referenceRange),
+          ...(input.resultOptions !== undefined ? { resultOptions: input.resultOptions } : {}),
+          ...(input.panelComponents !== undefined
+            ? { panelComponents: input.panelComponents }
+            : {}),
         },
       });
     });
@@ -121,7 +152,7 @@ export class LabService {
   async updateTest(
     principal: AuthenticatedPrincipal,
     testId: string,
-    input: { categoryId: string; name: string; price: string; active: boolean },
+    input: LabTestInput & { active: boolean },
   ) {
     return withTenantContext(prisma, principal, async (transaction) => {
       const found = await transaction.labTest.findUnique({
@@ -133,12 +164,31 @@ export class LabService {
           code: "LAB_TEST_NOT_FOUND",
           message: "Lab test not found",
         });
+      const category = await transaction.labCategory.findUnique({
+        where: { tenantId_id: { tenantId: principal.tenantId, id: input.categoryId } },
+      });
+      if (!category)
+        throw new AppError({
+          statusCode: 404,
+          code: "LAB_CATEGORY_NOT_FOUND",
+          message: "Lab category not found",
+        });
       return transaction.labTest.update({
         where: { tenantId_id: { tenantId: principal.tenantId, id: testId } },
         data: {
           categoryId: input.categoryId,
+          code: input.code?.trim().toUpperCase() ?? "LT-" + randomUUID().slice(0, 8).toUpperCase(),
           name: input.name.trim(),
+          description: text(input.description),
           price: formatMoney(parseMoney(input.price, "lab test price")),
+          sampleType: text(input.sampleType),
+          resultType: input.resultType,
+          unit: text(input.unit),
+          referenceRange: text(input.referenceRange),
+          ...(input.resultOptions !== undefined ? { resultOptions: input.resultOptions } : {}),
+          ...(input.panelComponents !== undefined
+            ? { panelComponents: input.panelComponents }
+            : {}),
           active: input.active,
         },
       });
@@ -154,6 +204,7 @@ export class LabService {
           ...(q
             ? {
                 OR: [
+                  { patientNumber: { contains: q, mode: "insensitive" } },
                   { name: { contains: q, mode: "insensitive" } },
                   { phone: { contains: q, mode: "insensitive" } },
                 ],
@@ -172,10 +223,21 @@ export class LabService {
       transaction.patient.create({
         data: {
           tenantId: principal.tenantId,
+          patientNumber:
+            "PT-" +
+            new Date().toISOString().slice(0, 10).replaceAll("-", "") +
+            "-" +
+            randomUUID().slice(0, 6).toUpperCase(),
           name: input.name.trim(),
           age: input.age,
           sex: text(input.sex),
+          dateOfBirth: input.dateOfBirth ?? null,
           phone: text(input.phone),
+          address: text(input.address),
+          emergencyContactName: text(input.emergencyContactName),
+          emergencyContactPhone: text(input.emergencyContactPhone),
+          bloodGroup: text(input.bloodGroup),
+          allergies: text(input.allergies),
           notes: text(input.notes),
         },
       }),
@@ -287,7 +349,10 @@ export class LabService {
               labTestId: test.id,
               testName: test.name,
               categoryName: test.category.name,
-              price: test.price,
+                price: test.price,
+                resultType: test.resultType,
+                unit: test.unit,
+                referenceRange: test.referenceRange,
             })),
           },
         },
@@ -403,6 +468,36 @@ export class LabService {
         where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
         data: { amountPaid: formatMoney(paid + payment), paymentMethod: input.method },
       });
+      if (visit.clinicVisitId) {
+        await transaction.clinicalPayment.create({
+          data: {
+            tenantId: principal.tenantId,
+            branchId: visit.branchId,
+            patientId: visit.patientId,
+            clinicVisitId: visit.clinicVisitId,
+            labVisitId: visit.id,
+            type: "LAB",
+            receiptNumber:
+              "RCT-L-" +
+              new Date().toISOString().slice(0, 10).replaceAll("-", "") +
+              "-" +
+              randomUUID().slice(0, 8).toUpperCase(),
+            amount: formatMoney(payment),
+            method: input.method,
+            externalReference: text(input.externalReference),
+            idempotencyKey: "lab:" + input.idempotencyKey,
+            notes: text(input.notes),
+            collectedByMembershipId: principal.membershipId,
+            collectedByUserId: principal.userId,
+          },
+        });
+      }
+      if (visit.clinicVisitId && paid + payment === total) {
+        await transaction.clinicVisit.update({
+          where: { tenantId_id: { tenantId: principal.tenantId, id: visit.clinicVisitId } },
+          data: { status: "WAITING_FOR_SAMPLE" },
+        });
+      }
       await transaction.auditLog.create({
         data: {
           tenantId: principal.tenantId,
@@ -432,7 +527,14 @@ export class LabService {
     principal: AuthenticatedPrincipal,
     visitId: string,
     visitTestId: string,
-    input: { resultStatus: LabResultStatus; resultNote?: string | undefined },
+    input: {
+      resultStatus: LabResultStatus;
+      resultValue?: string | undefined;
+      numericValue?: number | undefined;
+      interpretation?: LabInterpretation | undefined;
+      resultData?: unknown;
+      resultNote?: string | undefined;
+    },
   ) {
     return withTenantContext(prisma, principal, async (transaction) => {
       const visit = await transaction.labVisit.findUnique({
@@ -445,16 +547,72 @@ export class LabService {
           code: "LAB_VISIT_NOT_FOUND",
           message: "Lab visit not found",
         });
-      if (!visit.tests.some((test) => test.id === visitTestId))
+      const target = visit.tests.find((test) => test.id === visitTestId);
+      if (!target)
         throw new AppError({
           statusCode: 404,
           code: "LAB_VISIT_TEST_NOT_FOUND",
           message: "Lab visit test not found",
         });
+      if (visit.clinicVisitId && visit.amountPaid.lessThan(visit.total))
+        throw new AppError({
+          statusCode: 409,
+          code: "LAB_PAYMENT_REQUIRED",
+          message: "Lab fee must be paid in full before results can be entered",
+        });
+      if (visit.clinicVisitId && visit.sampleStatus !== "COLLECTED")
+        throw new AppError({
+          statusCode: 409,
+          code: "LAB_SAMPLE_REQUIRED",
+          message: "The patient sample must be collected before results can be entered",
+        });
+      if (input.resultStatus === "PENDING")
+        throw new AppError({
+          statusCode: 400,
+          code: "LAB_RESULT_INCOMPLETE",
+          message: "Choose a completed result status",
+        });
+      if (target.resultType === "NUMERIC" && input.numericValue === undefined)
+        throw new AppError({
+          statusCode: 400,
+          code: "NUMERIC_RESULT_REQUIRED",
+          message: "Enter a numeric result value",
+        });
+      if (
+        ["TEXT", "SELECT"].includes(target.resultType) &&
+        !input.resultValue?.trim()
+      )
+        throw new AppError({
+          statusCode: 400,
+          code: "TEXT_RESULT_REQUIRED",
+          message: "Enter a result value",
+        });
+      if (target.resultType === "PANEL" && !input.resultData)
+        throw new AppError({
+          statusCode: 400,
+          code: "PANEL_RESULT_REQUIRED",
+          message: "Enter all panel result components",
+        });
+      if (
+        target.resultType === "POSITIVE_NEGATIVE" &&
+        !["POSITIVE", "NEGATIVE", "INCONCLUSIVE"].includes(input.resultStatus)
+      )
+        throw new AppError({
+          statusCode: 400,
+          code: "QUALITATIVE_RESULT_REQUIRED",
+          message: "Choose positive, negative or inconclusive",
+        });
+
       await transaction.labVisitTest.update({
         where: { tenantId_id: { tenantId: principal.tenantId, id: visitTestId } },
         data: {
           resultStatus: input.resultStatus,
+          resultValue:
+            text(input.resultValue) ??
+            (target.resultType === "POSITIVE_NEGATIVE" ? input.resultStatus : null),
+          numericValue: input.numericValue ?? null,
+          interpretation: input.interpretation ?? null,
+          ...(input.resultData ? { resultData: jsonValue(input.resultData) } : {}),
           resultNote: text(input.resultNote),
           markedAt: new Date(),
           markedByMembershipId: principal.membershipId,
@@ -469,6 +627,28 @@ export class LabService {
           pending === 0
             ? { status: "COMPLETED", completedAt: new Date() }
             : { status: "RESULTS_PENDING" },
+      });
+      if (pending === 0 && visit.clinicVisitId) {
+        await transaction.clinicVisit.update({
+          where: { tenantId_id: { tenantId: principal.tenantId, id: visit.clinicVisitId } },
+          data: { status: "LAB_RESULTS_READY" },
+        });
+      }
+      await transaction.auditLog.create({
+        data: {
+          tenantId: principal.tenantId,
+          branchId: visit.branchId,
+          actorUserId: principal.userId,
+          actorMembershipId: principal.membershipId,
+          action: pending === 0 ? "LAB_ORDER_COMPLETED" : "LAB_RESULT_RECORDED",
+          entityType: "lab_visit_test",
+          entityId: visitTestId,
+          metadata: {
+            visitId,
+            resultType: target.resultType,
+            interpretation: input.interpretation ?? null,
+          },
+        },
       });
       return transaction.labVisit.findUniqueOrThrow({
         where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },

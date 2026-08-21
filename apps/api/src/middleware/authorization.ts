@@ -2,9 +2,26 @@ import type { RequestHandler } from "express";
 import { roleHasPermission, type Permission } from "../auth/permissions.js";
 import { AppError } from "../errors/app-error.js";
 
+const supportReadPermissions = new Set<Permission>([
+  "tenant.read",
+  "branch.read",
+  "member.read",
+  "customer.read",
+  "supplier.read",
+  "clinic.read",
+  "lab.read",
+  "inventory.read",
+  "expense.read",
+  "report.read",
+  "audit.read",
+]);
+
 export function requirePermission(permission: Permission): RequestHandler {
   return (request, _response, next) => {
-    if (!request.auth || !roleHasPermission(request.auth.role, permission)) {
+    const permitted = request.auth?.isSupportSession
+      ? supportReadPermissions.has(permission)
+      : Boolean(request.auth && roleHasPermission(request.auth.role, permission));
+    if (!request.auth || !permitted) {
       next(
         new AppError({
           statusCode: 403,
@@ -19,6 +36,7 @@ export function requirePermission(permission: Permission): RequestHandler {
 }
 
 export function canAccessBranch(principal: NonNullable<Express.Request["auth"]>, branchId: string) {
-  const mayUseAllBranches = principal.role === "OWNER" || principal.role === "ADMIN";
+  const mayUseAllBranches =
+    principal.isSupportSession || principal.role === "OWNER" || principal.role === "ADMIN";
   return (mayUseAllBranches && principal.allBranches) || principal.branchIds.includes(branchId);
 }

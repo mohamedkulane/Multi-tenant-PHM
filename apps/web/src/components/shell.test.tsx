@@ -23,7 +23,7 @@ describe("authenticated shells", () => {
     window.history.replaceState({}, "", "/sales");
     window.localStorage.setItem("phms.branch", "branch-1");
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    client.setQueryData(["tenant-principal"], { role: "CASHIER" });
+    client.setQueryData(["tenant-principal"], { role: "RECEPTIONIST" });
     client.setQueryData(["tenant-workspace"], { tenant: { id: "tenant-1" } });
 
     render(
@@ -34,10 +34,10 @@ describe("authenticated shells", () => {
             tenantId: "tenant-1",
             tenantName: "Test Pharmacy",
             userId: "user-1",
-            fullName: "Cashier User",
+            fullName: "Reception User",
             membershipId: "membership-1",
-            username: "cashier",
-            role: "CASHIER",
+            username: "reception",
+            role: "RECEPTIONIST",
             allBranches: true,
             branchIds: [],
           }}
@@ -58,7 +58,7 @@ describe("authenticated shells", () => {
           onBranchChange={vi.fn()}
           currentPath="/sales"
         >
-          <p>Cashier workspace</p>
+          <p>Reception workspace</p>
         </TenantShell>
       </QueryClientProvider>,
     );

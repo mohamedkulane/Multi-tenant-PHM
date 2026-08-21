@@ -1,8 +1,6 @@
 export const platformDashboardPath = "/platform/dashboard";
 
 export function tenantLandingPath(role: string) {
-  if (role === "CASHIER") return "/sales";
-  if (role === "PHARMACIST") return "/inventory";
-  if (role === "AUDITOR") return "/reports";
+  if (["DOCTOR", "RECEPTIONIST", "PHARMACIST", "LAB_TECHNICIAN"].includes(role)) return "/clinic";
   return "/dashboard";
 }

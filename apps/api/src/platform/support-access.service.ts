@@ -372,7 +372,7 @@ export class PrismaSupportAccessService implements SupportAccessService {
         fullName: user.fullName,
         membershipId: supportMembershipId,
         username: user.email,
-        role: TenantRole.AUDITOR,
+        role: TenantRole.DOCTOR,
         allBranches: true,
         branchIds: [],
         isSupportSession: true,

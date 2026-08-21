@@ -625,9 +625,11 @@ export function PlatformBroadcastsPage() {
                   value={form.role}
                   onChange={(event) => setForm({ ...form, role: event.target.value })}
                 >
-                  {["OWNER", "ADMIN", "MANAGER", "PHARMACIST", "CASHIER", "AUDITOR"].map((role) => (
-                    <option key={role}>{role}</option>
-                  ))}
+                  {["OWNER", "ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "LAB_TECHNICIAN"].map(
+                    (role) => (
+                      <option key={role}>{role}</option>
+                    ),
+                  )}
                 </select>
               </Field>
             ) : null}

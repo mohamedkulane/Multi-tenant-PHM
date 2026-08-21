@@ -421,7 +421,7 @@ export class PrismaCatalogService implements CatalogService {
     input: ConfigureBranchProductInput,
     requestId?: string,
   ) {
-    if (!["OWNER", "ADMIN", "MANAGER"].includes(principal.role)) {
+    if (!["OWNER", "ADMIN", "PHARMACIST"].includes(principal.role)) {
       throw new AppError({
         statusCode: 403,
         code: "BRANCH_PRODUCT_CONFIG_FORBIDDEN",

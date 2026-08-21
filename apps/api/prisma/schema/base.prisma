@@ -29,10 +29,10 @@ enum MembershipStatus {
 enum TenantRole {
   OWNER
   ADMIN
-  MANAGER
+  DOCTOR
+  RECEPTIONIST
   PHARMACIST
-  CASHIER
-  AUDITOR
+  LAB_TECHNICIAN
 }
 
 enum PlatformRole {

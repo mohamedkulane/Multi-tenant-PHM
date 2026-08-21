@@ -34,6 +34,8 @@ import {
   TenantAuditPage,
 } from "./pages/tenant-pages";
 import { CustomersPage, LabPage, SuppliersPage } from "./pages/operations-pages";
+import { ClinicPage } from "./pages/clinic-page";
+import { ClinicalVisitPage } from "./pages/clinical-visit-page";
 import type { PlatformPrincipal, TenantPrincipal, Workspace } from "./types";
 
 function PlatformApplication({ pathname }: { pathname: string }) {
@@ -129,7 +131,19 @@ function TenantApplication({ pathname }: { pathname: string }) {
   if (workspace.isLoading) return <LoadingState label="Loading tenant workspace" />;
   if (workspace.error || !workspace.data) return <ErrorState error={workspace.error} />;
   let page: React.ReactNode = <DashboardPage branch={branch} workspace={workspace.data} />;
-  if (pathname === "/products") page = <ProductsPage principal={principal.data} branch={branch} />;
+  const clinicalVisitMatch = pathname.match(/^\/clinic\/visits\/([^/]+)$/);
+  if (clinicalVisitMatch)
+    page = (
+      <ClinicalVisitPage
+        visitId={clinicalVisitMatch[1]!}
+        workspace={workspace.data}
+        principal={principal.data}
+      />
+    );
+  else if (pathname === "/clinic")
+    page = <ClinicPage branch={branch} workspace={workspace.data} principal={principal.data} />;
+  else if (pathname === "/products")
+    page = <ProductsPage principal={principal.data} branch={branch} />;
   else if (pathname === "/customers")
     page = <CustomersPage workspace={workspace.data} principal={principal.data} />;
   else if (pathname === "/suppliers") page = <SuppliersPage principal={principal.data} />;

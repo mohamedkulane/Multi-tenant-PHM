@@ -1,10 +1,7 @@
 import cors from "cors";
 import express, { type Request, type Response } from "express";
-import * as helmetModule from "helmet";
+import helmet from "helmet";
 import { pinoHttp } from "pino-http";
-const helmet = ("default" in helmetModule
-  ? helmetModule.default
-  : helmetModule) as unknown as typeof import("helmet").default;
 import { combinedAuthService } from "./auth/combined-auth.service.js";
 import type { AuthService } from "./auth/auth.types.js";
 import { platformAuthService } from "./platform/platform-auth.service.js";
@@ -21,6 +18,7 @@ import { env } from "./config/env.js";
 import { checkDatabaseReadiness } from "./database/readiness.js";
 import { customerService, type CustomerService } from "./crm/customer.service.js";
 import { labService, type LabService } from "./lab/lab.service.js";
+import { clinicService, type ClinicService } from "./clinic/clinic.service.js";
 import { supplierService, type SupplierService } from "./partners/supplier.service.js";
 import { debtService, type DebtService } from "./finance/debt.service.js";
 import { expenseService, type ExpenseService } from "./finance/expense.service.js";
@@ -45,6 +43,7 @@ import {
 import { createAuthRouter } from "./routes/auth.routes.js";
 import { createCustomerRouter } from "./routes/customer.routes.js";
 import { createLabRouter } from "./routes/lab.routes.js";
+import { createClinicRouter } from "./routes/clinic.routes.js";
 import { createSupplierRouter } from "./routes/supplier.routes.js";
 import { createPlatformAuthRouter } from "./routes/platform-auth.routes.js";
 import { createPlatformAdminRouter } from "./routes/platform-admin.routes.js";
@@ -70,6 +69,7 @@ export interface CreateAppOptions {
   customers?: CustomerService;
   suppliers?: SupplierService;
   laboratory?: LabService;
+  clinic?: ClinicService;
   sales?: SalesService;
   expenses?: ExpenseService;
   debts?: DebtService;
@@ -199,6 +199,7 @@ export function createApp(options: CreateAppOptions = {}) {
     createSupplierRouter(authentication, options.suppliers ?? supplierService),
   );
   app.use("/api/v1/lab", createLabRouter(authentication, options.laboratory ?? labService));
+  app.use("/api/v1/clinic", createClinicRouter(authentication, options.clinic ?? clinicService));
   app.use("/api/v1/sales", createSalesRouter(authentication, options.sales ?? salesService));
   app.use("/api/v1/debts", createDebtRouter(authentication, options.debts ?? debtService));
   app.use(

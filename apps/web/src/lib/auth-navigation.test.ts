@@ -9,10 +9,10 @@ describe("separate login destinations", () => {
   it.each([
     ["OWNER", "/dashboard"],
     ["ADMIN", "/dashboard"],
-    ["MANAGER", "/dashboard"],
-    ["PHARMACIST", "/inventory"],
-    ["CASHIER", "/sales"],
-    ["AUDITOR", "/reports"],
+    ["DOCTOR", "/clinic"],
+    ["RECEPTIONIST", "/clinic"],
+    ["PHARMACIST", "/clinic"],
+    ["LAB_TECHNICIAN", "/clinic"],
   ])("sends %s to %s", (role, destination) => {
     expect(tenantLandingPath(role)).toBe(destination);
   });
