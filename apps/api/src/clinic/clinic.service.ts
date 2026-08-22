@@ -132,11 +132,62 @@ const clinicVisitInclude = {
   },
 } satisfies Prisma.ClinicVisitInclude;
 
+type ClinicVisitRecord = Prisma.ClinicVisitGetPayload<{ include: typeof clinicVisitInclude }>;
+
+function redactClinicalVisit(principal: AuthenticatedPrincipal, visit: ClinicVisitRecord) {
+  if (
+    principal.isSupportSession ||
+    principal.role === "OWNER" ||
+    principal.role === "ADMIN" ||
+    principal.role === "DOCTOR"
+  ) {
+    return visit;
+  }
+
+  if (principal.role === "LAB_TECHNICIAN") {
+    return {
+      ...visit,
+      clinicalAssessment: null,
+      diagnoses: [],
+      prescriptions: [],
+      clinicalPayments: visit.clinicalPayments.filter((payment) => payment.type === "LAB"),
+    };
+  }
+
+  if (principal.role === "PHARMACIST") {
+    return {
+      ...visit,
+      clinicalAssessment: null,
+      diagnoses: [],
+      clinicalPayments: [],
+      labVisits: [],
+    };
+  }
+
+  return {
+    ...visit,
+    clinicalAssessment: null,
+    diagnoses: [],
+    prescriptions: [],
+    labVisits: visit.labVisits.map((labVisit) => ({
+      ...labVisit,
+      tests: labVisit.tests.map((test) => ({
+        ...test,
+        resultValue: null,
+        numericValue: null,
+        resultData: null,
+        interpretation: null,
+        comments: null,
+      })),
+    })),
+  };
+}
+
 export class ClinicService {
   async visits(principal: AuthenticatedPrincipal, branchId: string) {
     requireBranch(principal, branchId);
-    return withTenantContext(prisma, { ...principal, branchId }, (transaction) =>
-      transaction.clinicVisit.findMany({
+    return withTenantContext(prisma, { ...principal, branchId }, async (transaction) => {
+      const visits = await transaction.clinicVisit.findMany({
         where: {
           tenantId: principal.tenantId,
           branchId,
@@ -173,7 +224,12 @@ export class ClinicService {
               : principal.role === "PHARMACIST"
                 ? {
                     status: {
-                      in: ["PRESCRIPTION_CREATED", "PRESCRIPTION_READY", "AT_PHARMACY", "COMPLETED"],
+                      in: [
+                        "PRESCRIPTION_CREATED",
+                        "PRESCRIPTION_READY",
+                        "AT_PHARMACY",
+                        "COMPLETED",
+                      ],
                     },
                   }
                 : {}),
@@ -181,8 +237,9 @@ export class ClinicService {
         include: clinicVisitInclude,
         orderBy: { createdAt: "desc" },
         take: 300,
-      }),
-    );
+      });
+      return visits.map((visit) => redactClinicalVisit(principal, visit));
+    });
   }
 
   async doctors(principal: AuthenticatedPrincipal, branchId: string) {
@@ -218,7 +275,42 @@ export class ClinicService {
         });
       }
       requireDoctorAccess(principal, visit);
-      return visit;
+      const actorIds = new Set<string>();
+      if (visit.assignedDoctorMembershipId) actorIds.add(visit.assignedDoctorMembershipId);
+      for (const payment of visit.clinicalPayments) actorIds.add(payment.collectedByMembershipId);
+      for (const prescription of visit.prescriptions)
+        actorIds.add(prescription.prescribedByMembershipId);
+      for (const labVisit of visit.labVisits) {
+        if (labVisit.requestedByMembershipId) actorIds.add(labVisit.requestedByMembershipId);
+        if (labVisit.sampleCollectedById) actorIds.add(labVisit.sampleCollectedById);
+        for (const test of labVisit.tests)
+          if (test.markedByMembershipId) actorIds.add(test.markedByMembershipId);
+      }
+      const actors = actorIds.size
+        ? await transaction.tenantMembership.findMany({
+            where: { tenantId: principal.tenantId, id: { in: [...actorIds] } },
+            select: {
+              id: true,
+              username: true,
+              role: true,
+              user: { select: { fullName: true } },
+            },
+          })
+        : [];
+      return {
+        ...redactClinicalVisit(principal, visit),
+        actors: Object.fromEntries(
+          actors.map((actor) => [
+            actor.id,
+            {
+              id: actor.id,
+              name: actor.user.fullName,
+              username: actor.username,
+              role: actor.role,
+            },
+          ]),
+        ),
+      };
     });
   }
 
@@ -501,8 +593,7 @@ export class ClinicService {
       await transaction.clinicVisit.update({
         where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
         data: {
-          assignedDoctorMembershipId:
-            visit.assignedDoctorMembershipId ?? principal.membershipId,
+          assignedDoctorMembershipId: visit.assignedDoctorMembershipId ?? principal.membershipId,
           chiefComplaint: input.chiefComplaint.trim(),
           history: clean(input.historyPresentIllness),
           examination: clean(input.examinationNotes),
@@ -594,7 +685,11 @@ export class ClinicService {
           clinicalNotes: clean(input.clinicalNotes),
           priority: input.priority,
           requestedByMembershipId: principal.membershipId,
-          sampleType: tests.map((test) => test.sampleType).filter(Boolean).join(", ") || null,
+          sampleType:
+            tests
+              .map((test) => test.sampleType)
+              .filter(Boolean)
+              .join(", ") || null,
           subtotal: formatMoney(subtotal),
           total: formatMoney(subtotal),
           registeredByMembershipId: principal.membershipId,
@@ -727,6 +822,7 @@ export class ClinicService {
           code: "CLINIC_VISIT_NOT_FOUND",
           message: "Clinic visit not found",
         });
+      requireDoctorAccess(principal, visit);
       if (visit.consultationPaymentStatus !== "PAID")
         throw new AppError({
           statusCode: 409,
@@ -761,7 +857,11 @@ export class ClinicService {
             status: "REGISTERED",
             clinicalNotes: clean(input.doctorNotes),
             requestedByMembershipId: principal.membershipId,
-            sampleType: tests.map((test) => test.sampleType).filter(Boolean).join(", ") || null,
+            sampleType:
+              tests
+                .map((test) => test.sampleType)
+                .filter(Boolean)
+                .join(", ") || null,
             subtotal: formatMoney(subtotal),
             total: formatMoney(subtotal),
             registeredByMembershipId: principal.membershipId,
@@ -829,7 +929,11 @@ export class ClinicService {
       await setTransactionContext(transaction, principal);
       const visit = await transaction.clinicVisit.findUnique({
         where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
-        include: { clinicalAssessment: true, diagnoses: true, labVisits: { include: { tests: true } } },
+        include: {
+          clinicalAssessment: true,
+          diagnoses: true,
+          labVisits: { include: { tests: true } },
+        },
       });
       if (!visit || !canAccessBranch(principal, visit.branchId))
         throw new AppError({
@@ -837,6 +941,7 @@ export class ClinicService {
           code: "CLINIC_VISIT_NOT_FOUND",
           message: "Clinic visit not found",
         });
+      requireDoctorAccess(principal, visit);
       if (!visit.clinicalAssessment)
         throw new AppError({
           statusCode: 409,
@@ -859,10 +964,7 @@ export class ClinicService {
           branchId: visit.branchId,
           clinicVisitId: visitId,
           prescriptionNumber:
-            "RX-" +
-            new Date().getUTCFullYear() +
-            "-" +
-            randomUUID().slice(0, 8).toUpperCase(),
+            "RX-" + new Date().getUTCFullYear() + "-" + randomUUID().slice(0, 8).toUpperCase(),
           prescribedByMembershipId: principal.membershipId,
           diagnosisSnapshot:
             visit.diagnoses
@@ -923,11 +1025,7 @@ export class ClinicService {
     });
   }
 
-  async prescriptions(
-    principal: AuthenticatedPrincipal,
-    branchId: string,
-    search?: string,
-  ) {
+  async prescriptions(principal: AuthenticatedPrincipal, branchId: string, search?: string) {
     requireBranch(principal, branchId);
     const q = search?.trim();
     return withTenantContext(prisma, { ...principal, branchId }, (transaction) =>

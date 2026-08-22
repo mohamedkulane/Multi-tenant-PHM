@@ -317,6 +317,8 @@ export function DashboardPage({
     label: text(row["label"]),
     units: Number(row["units"] ?? 0),
   }));
+  const topLabTests = rows(charts["topLabTests"]);
+  const topPrescribedMedicines = rows(charts["topPrescribedMedicines"]);
   const alertItems = rows(notifications.data?.["items"]).filter((item) => !item["readAt"]);
   return (
     <>
@@ -367,6 +369,34 @@ export function DashboardPage({
               value={text(cards["lowStockProducts"] ?? 0)}
               tone="rose"
             />
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <Stat label="Today's patients" value={text(cards["patientsToday"] ?? 0)} tone="blue" />
+            <Stat
+              label="Patients waiting"
+              value={text(cards["patientsWaiting"] ?? 0)}
+              tone="amber"
+            />
+            <Stat
+              label="Consultation revenue"
+              value={money(cards["consultationRevenue"], workspace.tenant.currencyCode)}
+            />
+            <Stat
+              label="Laboratory revenue"
+              value={money(cards["labRevenue"], workspace.tenant.currencyCode)}
+              tone="blue"
+            />
+            <Stat
+              label="Pharmacy clinical revenue"
+              value={money(cards["pharmacyRevenue"], workspace.tenant.currencyCode)}
+            />
+            <Stat
+              label="Total clinical revenue"
+              value={money(cards["totalRevenue"], workspace.tenant.currencyCode)}
+              tone="emerald"
+            />
+            <Stat label="Completed visits" value={text(cards["completedVisits"] ?? 0)} />
+            <Stat label="Lab tests performed" value={text(cards["labTestsPerformed"] ?? 0)} />
           </div>
           <div className="mt-6 grid gap-6 xl:grid-cols-2">
             <Card
@@ -452,6 +482,60 @@ export function DashboardPage({
                 <EmptyState
                   title="Alaab lama iibin"
                   description="No product movement exists in this period."
+                />
+              )}
+            </Card>
+          </div>
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
+            <Card
+              title="Top laboratory tests"
+              description="Most frequently ordered tests in this period."
+            >
+              {topLabTests.length ? (
+                <ol className="divide-y divide-slate-100 p-4">
+                  {topLabTests.map((item, index) => (
+                    <li
+                      key={`${text(item["label"])}-${index}`}
+                      className="flex items-center justify-between gap-4 py-3"
+                    >
+                      <span>
+                        <strong className="mr-3 text-slate-400">{index + 1}</strong>
+                        {text(item["label"])}
+                      </span>
+                      <StatusBadge value={`${text(item["count"])} orders`} />
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <EmptyState
+                  title="No lab tests"
+                  description="No laboratory orders exist in this period."
+                />
+              )}
+            </Card>
+            <Card
+              title="Top prescribed medicines"
+              description="Most frequently prescribed medicines in this period."
+            >
+              {topPrescribedMedicines.length ? (
+                <ol className="divide-y divide-slate-100 p-4">
+                  {topPrescribedMedicines.map((item, index) => (
+                    <li
+                      key={`${text(item["label"])}-${index}`}
+                      className="flex items-center justify-between gap-4 py-3"
+                    >
+                      <span>
+                        <strong className="mr-3 text-slate-400">{index + 1}</strong>
+                        {text(item["label"])}
+                      </span>
+                      <StatusBadge value={`${text(item["count"])} prescriptions`} />
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <EmptyState
+                  title="No prescriptions"
+                  description="No prescribed medicines exist in this period."
                 />
               )}
             </Card>
@@ -1955,8 +2039,7 @@ export function SalesPage({
   });
   const prescriptions = useQuery({
     queryKey: ["pharmacy-prescriptions", branch?.id],
-    queryFn: () =>
-      getData<Row[]>("/clinic/prescriptions?branchId=" + branch!.id),
+    queryFn: () => getData<Row[]>("/clinic/prescriptions?branchId=" + branch!.id),
     enabled: Boolean(branch) && ["OWNER", "ADMIN", "PHARMACIST"].includes(principal.role),
   });
   const saleDetail = useQuery({
@@ -2207,8 +2290,8 @@ export function SalesPage({
                   Link this sale to a clinical prescription
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Normal walk-in sales remain available. Map each prescribed medicine to the
-                  actual stocked product being dispensed.
+                  Normal walk-in sales remain available. Map each prescribed medicine to the actual
+                  stocked product being dispensed.
                 </p>
               </div>
               <div className="grid gap-4 lg:grid-cols-2">
@@ -3825,7 +3908,7 @@ export function ReportsPage({
       ) : null}
       <Card>
         <div className="flex flex-wrap gap-2 border-b border-slate-100 p-4">
-          {["sales", "inventory", "debts", "expenses", "margin"].map((item) => (
+          {["sales", "clinical", "inventory", "debts", "expenses", "margin"].map((item) => (
             <button
               key={item}
               className={report === item ? "btn-primary" : "btn-secondary"}
@@ -3849,7 +3932,9 @@ export function ReportsPage({
                 render: (row: Row) =>
                   typeof row[key] === "object"
                     ? JSON.stringify(row[key])
-                    : key.toLowerCase().includes("amount") || key.toLowerCase().includes("sales")
+                    : key.toLowerCase().includes("amount") ||
+                        key.toLowerCase().includes("sales") ||
+                        key.toLowerCase().includes("revenue")
                       ? money(row[key], workspace.tenant.currencyCode)
                       : text(row[key]),
               }))}

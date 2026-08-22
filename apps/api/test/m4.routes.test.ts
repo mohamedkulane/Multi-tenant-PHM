@@ -94,6 +94,42 @@ describe("M4 API routes", () => {
     expect(sales.checkout).not.toHaveBeenCalled();
   });
 
+  it("passes prescription and visit links into the existing atomic checkout", async () => {
+    const sales = fakeSales();
+    const response = await request(createApp({ authentication, sales, expenses: fakeExpenses() }))
+      .post("/api/v1/sales")
+      .set("Cookie", "phms_session=test")
+      .send({
+        branchId,
+        customerName: "Clinical patient",
+        clinicVisitId: saleId,
+        prescriptionId: categoryId,
+        amountPaid: "5.0000",
+        paymentMethod: "CASH",
+        idempotencyKey: "checkout:prescription:1",
+        lines: [
+          {
+            productId,
+            packageCode: "unit",
+            packageQuantity: 2,
+            prescriptionItemId: tenantId,
+          },
+        ],
+      });
+
+    expect(response.status).toBe(201);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    expect(sales.checkout).toHaveBeenCalledWith(
+      principal,
+      expect.objectContaining({
+        clinicVisitId: saleId,
+        prescriptionId: categoryId,
+        lines: [expect.objectContaining({ prescriptionItemId: tenantId })],
+      }),
+      expect.any(String),
+    );
+  });
+
   it("records a validated debt payment command", async () => {
     const sales = fakeSales();
     const response = await request(createApp({ authentication, sales, expenses: fakeExpenses() }))

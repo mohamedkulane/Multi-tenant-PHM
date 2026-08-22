@@ -9,7 +9,7 @@ import { recordsToExcel } from "./excel.js";
 import { notificationService } from "./notification.service.js";
 import { reportService } from "./report.service.js";
 
-export type ExportReportType = "sales" | "inventory" | "debts" | "expenses" | "margin";
+export type ExportReportType = "sales" | "inventory" | "debts" | "expenses" | "margin" | "clinical";
 
 interface ExportPayload {
   reportType: ExportReportType;
@@ -242,7 +242,9 @@ export class PrismaJobService implements JobService {
                 ? await reportService.debts(principal, payload.branchId)
                 : payload.reportType === "expenses"
                   ? await reportService.expenses(principal, range!)
-                  : await reportService.margin(principal, range!);
+                  : payload.reportType === "margin"
+                    ? await reportService.margin(principal, range!)
+                    : await reportService.clinical(principal, range!);
         const workbook = recordsToExcel(rowsFromReport(report), payload.reportType);
         const content = Buffer.from(workbook, "utf8");
         const checksum = createHash("sha256").update(content).digest("hex");
