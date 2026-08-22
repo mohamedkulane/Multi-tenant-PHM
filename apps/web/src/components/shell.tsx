@@ -16,13 +16,16 @@ import {
   LogOut,
   MessageSquareText,
   Menu,
+  Microscope,
   PackageSearch,
   Receipt,
   ScrollText,
+  Search,
   Settings2,
   ShieldCheck,
   ShoppingCart,
   Stethoscope,
+  TestTubes,
   Truck,
   Users,
   WalletCards,
@@ -43,6 +46,7 @@ interface NavigationItem {
   label: string;
   icon: typeof LayoutDashboard;
   roles?: TenantPrincipal["role"][];
+  dividerBefore?: boolean;
 }
 
 const tenantNavigation: NavigationItem[] = [
@@ -70,6 +74,24 @@ const tenantNavigation: NavigationItem[] = [
     roles: ["LAB_TECHNICIAN"],
   },
   { to: "/lab/orders", label: "Laboratory orders", icon: FlaskConical, roles: ["LAB_TECHNICIAN"] },
+  {
+    to: "/lab/sample-collection",
+    label: "Sample collection",
+    icon: TestTubes,
+    roles: ["LAB_TECHNICIAN"],
+  },
+  {
+    to: "/lab/results-entry",
+    label: "Results entry",
+    icon: Microscope,
+    roles: ["LAB_TECHNICIAN"],
+  },
+  {
+    to: "/lab/completed",
+    label: "Completed results",
+    icon: ClipboardPlus,
+    roles: ["LAB_TECHNICIAN"],
+  },
   {
     to: "/pharmacy/dashboard",
     label: "Pharmacy dashboard",
@@ -113,7 +135,7 @@ const tenantNavigation: NavigationItem[] = [
   { to: "/staff", label: "Staff & branches", icon: Users, roles: ["OWNER", "ADMIN"] },
   { to: "/operations", label: "Jobs & alerts", icon: Bell, roles: ["OWNER", "ADMIN"] },
   { to: "/audit", label: "Audit trail", icon: ScrollText, roles: ["OWNER", "ADMIN"] },
-  { to: "/account", label: "Account", icon: Settings2 },
+  { to: "/account", label: "Account", icon: Settings2, dividerBefore: true },
 ];
 const platformNavigation: NavigationItem[] = [
   { to: "/platform/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -135,6 +157,8 @@ function Sidebar({
   primaryColor,
   accentColor,
   logoUrl,
+  tenantName,
+  branchName,
   messageUnread = 0,
 }: {
   navigation: NavigationItem[];
@@ -145,6 +169,8 @@ function Sidebar({
   primaryColor?: string;
   accentColor?: string;
   logoUrl?: string;
+  tenantName?: string;
+  branchName?: string;
   messageUnread?: number;
 }) {
   const primary = primaryColor ?? "#0d2926";
@@ -160,7 +186,7 @@ function Sidebar({
       ) : null}
       <aside
         style={{ backgroundColor: primary }}
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-slate-800 text-white transition-transform lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex w-[248px] flex-col border-r border-slate-800 text-white transition-transform lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -188,7 +214,7 @@ function Sidebar({
             </div>
             <div>
               <p className="text-lg font-bold tracking-tight">PHMS</p>
-              <p className="text-[11px] font-semibold tracking-[0.12em] text-emerald-200 uppercase">
+              <p className="whitespace-nowrap text-[9px] font-semibold tracking-[0.1em] text-emerald-200 uppercase">
                 {platform ? "Platform control" : "Healthcare workspace"}
               </p>
             </div>
@@ -202,33 +228,49 @@ function Sidebar({
           </button>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-          {navigation.map(({ to, label, icon: Icon }) => {
+          {navigation.map(({ to, label, icon: Icon, dividerBefore }) => {
             const active =
               currentPath === to ||
               (to !== "/platform/dashboard" &&
                 to !== "/dashboard" &&
                 currentPath.startsWith(`${to}/`));
             return (
-              <Link
-                key={to}
-                to={to}
-                onClick={close}
-                {...(active ? { style: { backgroundColor: accent, color: primary } } : {})}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
-                  active ? "shadow-sm" : "text-emerald-50/80 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                <Icon size={18} />
-                <span className="min-w-0 flex-1 truncate">{label}</span>
-                {to === "/doctor/messages" && messageUnread > 0 ? (
-                  <span className="min-w-5 rounded-full bg-blue-500 px-1.5 text-center text-[10px] font-bold leading-5 text-white">
-                    {messageUnread > 99 ? "99+" : messageUnread}
-                  </span>
-                ) : null}
-              </Link>
+              <div key={to} className={dividerBefore ? "mt-4 border-t border-white/15 pt-4" : ""}>
+                <Link
+                  to={to}
+                  onClick={close}
+                  {...(active ? { style: { backgroundColor: accent, color: primary } } : {})}
+                  className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                    active ? "shadow-sm" : "text-emerald-50/80 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  <Icon size={18} />
+                  <span className="min-w-0 flex-1 truncate">{label}</span>
+                  {to === "/doctor/messages" && messageUnread > 0 ? (
+                    <span className="min-w-5 rounded-full bg-blue-500 px-1.5 text-center text-[10px] font-bold leading-5 text-white">
+                      {messageUnread > 99 ? "99+" : messageUnread}
+                    </span>
+                  ) : null}
+                </Link>
+              </div>
             );
           })}
         </nav>
+        {!platform && tenantName ? (
+          <div className="border-t border-white/10 p-4">
+            <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
+              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-white/10 text-white">
+                <Building2 size={17} />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-bold text-white">{tenantName}</span>
+                <span className="mt-0.5 block truncate text-[11px] text-emerald-100/70">
+                  {branchName ?? "All branches"}
+                </span>
+              </span>
+            </div>
+          </div>
+        ) : null}
       </aside>
     </>
   );
@@ -251,6 +293,7 @@ export function TenantShell({
 }) {
   const [open, setOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState("");
   const announcedPlatformMessages = useRef(new Set<string>());
   const queryClient = useQueryClient();
   const notifications = useQuery({
@@ -305,9 +348,11 @@ export function TenantShell({
         primaryColor={workspace.branding?.primaryColor ?? "#0d2926"}
         accentColor={workspace.branding?.accentColor ?? "#b8f39a"}
         {...(workspace.branding?.logoUrl ? { logoUrl: workspace.branding.logoUrl } : {})}
+        tenantName={workspace.tenant.name}
+        {...(branch?.name ? { branchName: branch.name } : {})}
         messageUnread={unreadNotifications}
       />
-      <div className="lg:pl-72">
+      <div className="lg:pl-[248px]">
         <header className="sticky top-0 z-30 flex min-h-18 items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <button
@@ -335,6 +380,31 @@ export function TenantShell({
               </p>
             </div>
           </div>
+          {principal.role === "LAB_TECHNICIAN" ? (
+            <form
+              className="mx-4 hidden min-w-0 max-w-[350px] flex-1 md:block"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const query = globalSearch.trim();
+                navigate(query ? `/lab/orders?search=${encodeURIComponent(query)}` : "/lab/orders");
+              }}
+            >
+              <label className="relative block">
+                <span className="sr-only">Search laboratory orders</span>
+                <Search
+                  size={17}
+                  className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-slate-400"
+                />
+                <input
+                  className="input bg-slate-50"
+                  style={{ paddingLeft: "2.5rem" }}
+                  placeholder="Search by patient, visit or order..."
+                  value={globalSearch}
+                  onChange={(event) => setGlobalSearch(event.target.value)}
+                />
+              </label>
+            </form>
+          ) : null}
           <div className="flex items-center gap-2">
             {principal.role !== "RECEPTIONIST" ? (
               <div className="relative">
@@ -491,7 +561,7 @@ export function PlatformShell({
         accentColor={accentColor}
         {...(logoUrl ? { logoUrl } : {})}
       />
-      <div className="lg:pl-72">
+      <div className="lg:pl-[248px]">
         <header className="sticky top-0 z-30 flex min-h-18 items-center justify-between border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
           <div className="flex items-center gap-3">
             <button

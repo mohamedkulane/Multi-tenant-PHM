@@ -28,6 +28,9 @@ describe("role route isolation", () => {
   it("allows each operational role only its work area", () => {
     expect(tenantRouteAllowed("RECEPTIONIST", "/reception/visits")).toBe(true);
     expect(tenantRouteAllowed("LAB_TECHNICIAN", "/lab/orders")).toBe(true);
+    expect(tenantRouteAllowed("LAB_TECHNICIAN", "/lab/sample-collection")).toBe(true);
+    expect(tenantRouteAllowed("LAB_TECHNICIAN", "/lab/results-entry")).toBe(true);
+    expect(tenantRouteAllowed("LAB_TECHNICIAN", "/lab/completed")).toBe(true);
     expect(tenantRouteAllowed("PHARMACIST", "/sales")).toBe(true);
     expect(tenantRouteAllowed("PHARMACIST", "/reports")).toBe(false);
   });

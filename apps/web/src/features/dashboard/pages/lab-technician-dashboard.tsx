@@ -10,7 +10,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { getData } from "../../../api/client";
-import { Card, EmptyState, ErrorState, LoadingState, StatusBadge } from "../../../components/ui";
+import { Card, EmptyState, ErrorState, LoadingState } from "../../../components/ui";
 import { Link } from "../../../lib/navigation";
 import type { Branch, TenantPrincipal } from "../../../types";
 import { DashboardGreeting, Kpi } from "./doctor-dashboard";
@@ -20,6 +20,7 @@ import {
   dashboardText,
   elapsedMinutes,
   isToday,
+  latestDashboardRowPerPatient,
   shortTime,
   type DashboardRow,
 } from "./dashboard-utils";
@@ -54,9 +55,10 @@ export function LabTechnicianDashboard({
   );
   const inProgress = all.filter((visit) => collected(visit) && !completed(visit));
   const completedToday = all.filter((visit) => completed(visit) && isToday(visit["completedAt"]));
+  const dashboardVisits = useMemo(() => latestDashboardRowPerPatient(all), [all]);
   const filtered = useMemo(
     () =>
-      all
+      dashboardVisits
         .filter((visit) => {
           if (tab === "SAMPLE") return !collected(visit) && !completed(visit);
           if (tab === "PROGRESS")
@@ -66,7 +68,7 @@ export function LabTechnicianDashboard({
           return true;
         })
         .slice(0, 8),
-    [all, tab],
+    [dashboardVisits, tab],
   );
   if (visits.isLoading) return <LoadingState label="Loading laboratory dashboard" />;
   if (visits.error) return <ErrorState error={visits.error} />;
@@ -97,7 +99,7 @@ export function LabTechnicianDashboard({
         name={principal.fullName}
         description="Here's your laboratory workload for today."
       />
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5">
         <Kpi
           label="Total orders"
           value={today.length}
@@ -206,10 +208,12 @@ export function LabTechnicianDashboard({
                           </td>
                           <td>{dashboardRows(visit["tests"]).length}</td>
                           <td>
-                            <StatusBadge value={dashboardText(visit["priority"] ?? "ROUTINE")} />
+                            <LabPriorityChip
+                              value={dashboardText(visit["priority"] ?? "ROUTINE")}
+                            />
                           </td>
                           <td>
-                            <StatusBadge value={stage} />
+                            <LabStageChip value={stage} />
                           </td>
                           <td
                             className={
@@ -229,11 +233,13 @@ export function LabTechnicianDashboard({
                               }
                               to="/lab/orders"
                             >
-                              {!collected(visit) && balance(visit) === 0
-                                ? "Collect sample"
-                                : collected(visit) && !completed(visit)
-                                  ? "Enter results"
-                                  : "View"}
+                              {completed(visit)
+                                ? "View"
+                                : !collected(visit) && balance(visit) === 0
+                                  ? "Collect sample"
+                                  : collected(visit)
+                                    ? "Enter results"
+                                    : "View"}
                             </Link>
                           </td>
                         </tr>
@@ -315,8 +321,7 @@ export function LabTechnicianDashboard({
           </Card>
           <Card title="Recent completed">
             <div className="divide-y divide-slate-100">
-              {all
-                .filter(completed)
+              {latestDashboardRowPerPatient(all.filter(completed))
                 .slice(0, 5)
                 .map((visit) => (
                   <div
@@ -386,5 +391,34 @@ function Alert({ icon: Icon, text }: { icon: typeof Clock3; text: string }) {
       </span>
       <p className="text-sm font-bold text-slate-800">{text}</p>
     </div>
+  );
+}
+
+function LabPriorityChip({ value }: { value: string }) {
+  const urgent = value === "URGENT" || value === "STAT";
+  return (
+    <span
+      className={`inline-flex rounded-lg px-2.5 py-1 text-[11px] font-extrabold tracking-wide ${
+        urgent ? "bg-rose-50 text-rose-700" : "bg-blue-50 text-blue-700"
+      }`}
+    >
+      {value}
+    </span>
+  );
+}
+
+function LabStageChip({ value }: { value: string }) {
+  const tone =
+    value === "COMPLETED"
+      ? "bg-emerald-50 text-emerald-700"
+      : value === "AWAITING PAYMENT"
+        ? "bg-amber-50 text-amber-700"
+        : value === "RESULTS ENTRY"
+          ? "bg-violet-50 text-violet-700"
+          : "bg-blue-50 text-blue-700";
+  return (
+    <span className={`inline-flex rounded-lg px-2.5 py-1 text-[11px] font-extrabold ${tone}`}>
+      {value}
+    </span>
   );
 }

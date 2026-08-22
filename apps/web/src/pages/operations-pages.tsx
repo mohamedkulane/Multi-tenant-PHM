@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus, Printer, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { errorMessage, getData, sendData } from "../api/client";
 import { showToast } from "../components/toast";
 import {
@@ -739,10 +739,12 @@ export function LabPage({
   branch,
   workspace,
   principal,
+  initialVisitStage = "ALL",
 }: {
   branch?: Branch | undefined;
   workspace: Workspace;
   principal: TenantPrincipal;
+  initialVisitStage?: "ALL" | "SAMPLE" | "RESULTS" | "COMPLETED";
 }) {
   const client = useQueryClient();
   const [tab, setTab] = useState<"visits" | "patients" | "catalog">("visits");
@@ -752,7 +754,10 @@ export function LabPage({
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [testOpen, setTestOpen] = useState(false);
   const [selectedVisit, setSelectedVisit] = useState<Row | null>(null);
-  const [visitSearch, setVisitSearch] = useState("");
+  const [visitSearch, setVisitSearch] = useState(
+    () => new URLSearchParams(window.location.search).get("search") ?? "",
+  );
+  const [visitStage, setVisitStage] = useState(initialVisitStage);
   const [patientSearch, setPatientSearch] = useState("");
   const [patientForm, setPatientForm] = useState({
     name: "",
@@ -812,6 +817,7 @@ export function LabPage({
   const canManage = ["OWNER", "ADMIN"].includes(principal.role);
   const canResult = ["OWNER", "ADMIN", "LAB_TECHNICIAN"].includes(principal.role);
   const canCollectPayment = ["OWNER", "ADMIN", "RECEPTIONIST"].includes(principal.role);
+  useEffect(() => setVisitStage(initialVisitStage), [initialVisitStage]);
   const categories = useQuery({
     queryKey: ["lab-categories"],
     queryFn: () => getData<Row[]>("/lab/categories"),
@@ -1025,6 +1031,11 @@ export function LabPage({
   const visitDiscountValid = selectedTestDiscount <= selectedTestSubtotal;
   const normalizedVisitSearch = visitSearch.trim().toLowerCase();
   const filteredVisits = (visits.data ?? []).filter((visit) => {
+    const isCompleted = text(visit["status"]) === "COMPLETED";
+    const isCollected = text(visit["sampleStatus"]) === "COLLECTED";
+    if (visitStage === "SAMPLE" && (isCompleted || isCollected)) return false;
+    if (visitStage === "RESULTS" && (isCompleted || !isCollected)) return false;
+    if (visitStage === "COMPLETED" && !isCompleted) return false;
     if (!normalizedVisitSearch) return true;
     const patient = (visit["patient"] ?? {}) as Row;
     return [visit["visitNumber"], visit["status"], patient["name"], patient["phone"]].some(
@@ -1086,6 +1097,24 @@ export function LabPage({
                 onChange={(event) => setVisitSearch(event.target.value)}
               />
             </label>
+            <div className="mt-3 flex gap-2 overflow-x-auto">
+              {(["ALL", "SAMPLE", "RESULTS", "COMPLETED"] as const).map((stage) => (
+                <button
+                  key={stage}
+                  type="button"
+                  className={visitStage === stage ? "btn-primary" : "btn-secondary"}
+                  onClick={() => setVisitStage(stage)}
+                >
+                  {stage === "ALL"
+                    ? "All orders"
+                    : stage === "SAMPLE"
+                      ? "Sample collection"
+                      : stage === "RESULTS"
+                        ? "Results entry"
+                        : "Completed"}
+                </button>
+              ))}
+            </div>
           </div>
           {visits.isLoading ? (
             <LoadingState />

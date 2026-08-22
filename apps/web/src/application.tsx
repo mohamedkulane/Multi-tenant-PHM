@@ -222,9 +222,29 @@ function TenantApplication({ pathname }: { pathname: string }) {
   else if (pathname === "/customers")
     page = <CustomersPage workspace={workspace.data} principal={principal.data} />;
   else if (pathname === "/suppliers") page = <SuppliersPage principal={principal.data} />;
-  else if (pathname === "/lab" || pathname === "/lab/orders")
-    page = <LabPage branch={branch} workspace={workspace.data} principal={principal.data} />;
-  else if (pathname === "/inventory")
+  else if (
+    [
+      "/lab",
+      "/lab/orders",
+      "/lab/sample-collection",
+      "/lab/results-entry",
+      "/lab/completed",
+    ].includes(pathname)
+  ) {
+    const labStages = {
+      "/lab/sample-collection": "SAMPLE",
+      "/lab/results-entry": "RESULTS",
+      "/lab/completed": "COMPLETED",
+    } as const;
+    page = (
+      <LabPage
+        branch={branch}
+        workspace={workspace.data}
+        principal={principal.data}
+        initialVisitStage={labStages[pathname as keyof typeof labStages] ?? "ALL"}
+      />
+    );
+  } else if (pathname === "/inventory")
     page = <InventoryPage branch={branch} workspace={workspace.data} principal={principal.data} />;
   else if (pathname === "/sales")
     page = <SalesPage branch={branch} workspace={workspace.data} principal={principal.data} />;
