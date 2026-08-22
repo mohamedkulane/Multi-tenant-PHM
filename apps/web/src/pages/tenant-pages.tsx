@@ -318,7 +318,7 @@ export function DashboardPage({
     units: Number(row["units"] ?? 0),
   }));
   const topLabTests = rows(charts["topLabTests"]);
-  const topPrescribedMedicines = rows(charts["topPrescribedMedicines"]);
+  const topSoldMedicines = rows(charts["topSoldMedicines"]);
   const alertItems = rows(notifications.data?.["items"]).filter((item) => !item["readAt"]);
   return (
     <>
@@ -514,12 +514,12 @@ export function DashboardPage({
               )}
             </Card>
             <Card
-              title="Top prescribed medicines"
-              description="Most frequently prescribed medicines in this period."
+              title="Top sold medicines"
+              description="Most frequently sold medicines in this period."
             >
-              {topPrescribedMedicines.length ? (
+              {topSoldMedicines.length ? (
                 <ol className="divide-y divide-slate-100 p-4">
-                  {topPrescribedMedicines.map((item, index) => (
+                  {topSoldMedicines.map((item, index) => (
                     <li
                       key={`${text(item["label"])}-${index}`}
                       className="flex items-center justify-between gap-4 py-3"
@@ -528,14 +528,14 @@ export function DashboardPage({
                         <strong className="mr-3 text-slate-400">{index + 1}</strong>
                         {text(item["label"])}
                       </span>
-                      <StatusBadge value={`${text(item["count"])} prescriptions`} />
+                      <StatusBadge value={`${text(item["count"])} sales`} />
                     </li>
                   ))}
                 </ol>
               ) : (
                 <EmptyState
-                  title="No prescriptions"
-                  description="No prescribed medicines exist in this period."
+                  title="No medicine sales"
+                  description="No sold medicines exist in this period."
                 />
               )}
             </Card>
@@ -1994,8 +1994,7 @@ export function SalesPage({
   const [productSearch, setProductSearch] = useState("");
   const [productView, setProductView] = useState<"grid" | "list">("grid");
   const [productPage, setProductPage] = useState(1);
-  const [selectedPrescriptionId, setSelectedPrescriptionId] = useState("");
-  const [selectedPrescriptionItemId, setSelectedPrescriptionItemId] = useState("");
+  const [linkedClinicVisitId, setLinkedClinicVisitId] = useState("");
   const [saleAction, setSaleAction] = useState<"details" | "payment" | "return" | "void" | null>(
     null,
   );
@@ -2037,9 +2036,9 @@ export function SalesPage({
       getData<Row[]>(`/sales?branchId=${branch!.id}&q=${encodeURIComponent(salesSearch)}`),
     enabled: Boolean(branch),
   });
-  const prescriptions = useQuery({
-    queryKey: ["pharmacy-prescriptions", branch?.id],
-    queryFn: () => getData<Row[]>("/clinic/prescriptions?branchId=" + branch!.id),
+  const clinicVisits = useQuery({
+    queryKey: ["pharmacy-clinic-visits", branch?.id],
+    queryFn: () => getData<Row[]>("/clinic/visits?branchId=" + branch!.id),
     enabled: Boolean(branch) && ["OWNER", "ADMIN", "PHARMACIST"].includes(principal.role),
   });
   const saleDetail = useQuery({
@@ -2104,21 +2103,17 @@ export function SalesPage({
       sendData<Row>("post", "/sales", {
         branchId: branch!.id,
         customerId: form.customerId || undefined,
-        clinicVisitId: selectedPrescription
-          ? text(selectedPrescription["clinicVisitId"])
-          : undefined,
-        prescriptionId: selectedPrescriptionId || undefined,
+        clinicVisitId: linkedClinicVisitId || undefined,
         customerName: form.customerName,
         customerPhone: form.customerPhone || undefined,
         discount: form.discount,
         amountPaid: form.amountPaid,
         ...(Number(form.amountPaid) > 0 ? { paymentMethod: form.paymentMethod } : {}),
         idempotencyKey: idempotency("sale"),
-        lines: cart.map(({ productId, packageCode, packageQuantity, prescriptionItemId }) => ({
+        lines: cart.map(({ productId, packageCode, packageQuantity }) => ({
           productId,
           packageCode,
           packageQuantity,
-          prescriptionItemId,
         })),
       }),
     onSuccess: async (sale) => {
@@ -2133,8 +2128,7 @@ export function SalesPage({
         discount: "0",
       });
       setCart([]);
-      setSelectedPrescriptionId("");
-      setSelectedPrescriptionItemId("");
+      setLinkedClinicVisitId("");
       showToast({
         title: "Sale completed successfully",
         message: "Stock and invoice records were updated.",
@@ -2142,12 +2136,6 @@ export function SalesPage({
       await client.invalidateQueries({ queryKey: ["sales"] });
     },
   });
-  const selectedPrescription = (prescriptions.data ?? []).find(
-    (item) => text(item["id"]) === selectedPrescriptionId,
-  );
-  const selectedPrescriptionItems = rows(selectedPrescription?.["items"]).filter(
-    (item) => !["DISPENSED", "CANCELLED"].includes(text(item["status"])),
-  );
   const selected = (products.data ?? []).find((item) => text(item["id"]) === form.productId);
   const packages = rows(selected?.["packages"]);
   const selectedPackage = packages.find((item) => text(item["code"]) === form.packageCode);
@@ -2245,7 +2233,6 @@ export function SalesPage({
         packageQuantity: Number(form.quantity),
         unitPrice: Number(selectedPackage["salePrice"]),
         unitsPerPackage: text(selectedPackage["unitsPerPackage"]),
-        prescriptionItemId: selectedPrescriptionItemId || undefined,
       }),
     );
     setForm((current) => ({
@@ -2281,87 +2268,50 @@ export function SalesPage({
               checkout.mutate();
             }}
           >
-            <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 shadow-sm sm:p-5">
-              <div className="mb-3">
-                <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-emerald-700">
-                  Pharmacy prescription queue
-                </p>
-                <h2 className="mt-1 text-lg font-bold text-slate-950">
-                  Link this sale to a clinical prescription
-                </h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Normal walk-in sales remain available. Map each prescribed medicine to the actual
-                  stocked product being dispensed.
-                </p>
-              </div>
-              <div className="grid gap-4 lg:grid-cols-2">
-                <Field label="Pending prescription">
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+              <div className="grid items-end gap-4 lg:grid-cols-[1fr_auto]">
+                <Field
+                  label="Link clinic visit (optional)"
+                  hint="Use only for visit reporting. The pharmacist reads any medicines from the patient's physical paper."
+                >
                   <select
                     className="input"
-                    value={selectedPrescriptionId}
+                    value={linkedClinicVisitId}
                     onChange={(event) => {
-                      const prescription = (prescriptions.data ?? []).find(
+                      const visit = (clinicVisits.data ?? []).find(
                         (item) => text(item["id"]) === event.target.value,
                       );
-                      const clinicVisit = (prescription?.["clinicVisit"] ?? {}) as Row;
-                      const patient = (clinicVisit["patient"] ?? {}) as Row;
-                      setSelectedPrescriptionId(event.target.value);
-                      setSelectedPrescriptionItemId("");
-                      setCart([]);
+                      const patient = (visit?.["patient"] ?? {}) as Row;
+                      setLinkedClinicVisitId(event.target.value);
                       setForm((current) => ({
                         ...current,
-                        customerName: prescription ? text(patient["name"]) : "Walk-in Customer",
-                        customerPhone: prescription ? text(patient["phone"]) : "",
+                        customerName: visit ? text(patient["name"]) : "Walk-in Customer",
+                        customerPhone: visit ? text(patient["phone"]) : "",
                       }));
                     }}
                   >
                     <option value="">Normal walk-in sale</option>
-                    {(prescriptions.data ?? [])
-                      .filter((item) => !["DISPENSED", "CANCELLED"].includes(text(item["status"])))
-                      .map((item) => {
-                        const clinicVisit = (item["clinicVisit"] ?? {}) as Row;
-                        const patient = (clinicVisit["patient"] ?? {}) as Row;
-                        return (
-                          <option key={text(item["id"])} value={text(item["id"])}>
-                            {text(item["prescriptionNumber"])} - {text(patient["name"])} -{" "}
-                            {text(item["status"])}
-                          </option>
-                        );
-                      })}
+                    {(clinicVisits.data ?? []).map((visit) => {
+                      const patient = (visit["patient"] ?? {}) as Row;
+                      return (
+                        <option key={text(visit["id"])} value={text(visit["id"])}>
+                          {text(patient["patientNumber"])} · {text(patient["name"])} ·{" "}
+                          {text(visit["visitNumber"])}
+                        </option>
+                      );
+                    })}
                   </select>
                 </Field>
-                <Field
-                  label="Prescribed item being dispensed"
-                  hint={
-                    selectedPrescription
-                      ? "Choose an item, then select its actual inventory product below."
-                      : "Choose a prescription first."
-                  }
-                >
-                  <select
-                    className="input"
-                    disabled={!selectedPrescription}
-                    value={selectedPrescriptionItemId}
-                    onChange={(event) => setSelectedPrescriptionItemId(event.target.value)}
+                {linkedClinicVisitId ? (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setLinkedClinicVisitId("")}
                   >
-                    <option value="">Choose prescribed medicine</option>
-                    {selectedPrescriptionItems.map((item) => (
-                      <option key={text(item["id"])} value={text(item["id"])}>
-                        {text(item["medicineName"])} {text(item["strength"])} -{" "}
-                        {text(item["dosage"])} - {text(item["frequency"])}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                    Remove visit link
+                  </button>
+                ) : null}
               </div>
-              {selectedPrescription ? (
-                <div className="mt-4 flex flex-wrap gap-2 text-sm">
-                  <StatusBadge value={text(selectedPrescription["status"])} />
-                  <span className="rounded-full bg-white px-3 py-1 font-semibold text-slate-700">
-                    {selectedPrescriptionItems.length} item(s) remaining
-                  </span>
-                </div>
-              ) : null}
             </section>
 
             <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">

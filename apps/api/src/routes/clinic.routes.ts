@@ -68,42 +68,34 @@ export function createClinicRouter(
     response.json({
       data: await service.doctors(request.auth!, uuid.parse(request.query.branchId)),
     }),
-  );  router.get("/visits/:visitId", requirePermission("clinic.read"), async (request, response) =>
-    response.json({ data: await service.visit(request.auth!, uuid.parse(request.params.visitId)) }),
   );
-  router.get("/prescriptions", requirePermission("prescription.read"), async (request, response) =>
-    response.json({
-      data: await service.prescriptions(
-        request.auth!,
-        uuid.parse(request.query.branchId),
-        z.string().trim().max(100).optional().parse(request.query.q),
-      ),
-    }),
+  router.get("/visits/:visitId", requirePermission("clinic.read"), async (request, response) =>
+    response.json({ data: await service.visit(request.auth!, uuid.parse(request.params.visitId)) }),
   );
   router.get(
     "/patients/:patientId/history",
     requirePermission("clinic.history"),
     async (request, response) =>
       response.json({
-        data: await service.patientHistory(
-          request.auth!,
-          uuid.parse(request.params.patientId),
-        ),
+        data: await service.patientHistory(request.auth!, uuid.parse(request.params.patientId)),
       }),
   );
   router.post("/visits", requirePermission("clinic.register"), async (request, response) => {
     const body = z
-      .object({ branchId: uuid, patientId: uuid, consultationFee: money, doctorMembershipId: uuid.optional() })
+      .object({
+        branchId: uuid,
+        patientId: uuid,
+        consultationFee: money,
+        doctorMembershipId: uuid.optional(),
+      })
       .parse(request.body);
-    response
-      .status(201)
-      .json({
-        data: await service.register(
-          request.auth!,
-          body,
-          response.locals.requestId as string | undefined,
-        ),
-      });
+    response.status(201).json({
+      data: await service.register(
+        request.auth!,
+        body,
+        response.locals.requestId as string | undefined,
+      ),
+    });
   });
   router.post(
     "/visits/:visitId/consultation-payment",
@@ -189,63 +181,17 @@ export function createClinicRouter(
       });
     },
   );
-  router.put(
-    "/visits/:visitId/consultation",
-    requirePermission("clinic.examine"),
-    async (request, response) => {
-      const body = z
-        .object({
-          chiefComplaint: z.string().trim().min(1).max(2000),
-          history: optionalText(4000),
-          examination: optionalText(4000),
-          diagnosis: optionalText(2000),
-          doctorNotes: optionalText(4000),
-          testIds: z.array(uuid).max(100).default([]),
-        })
-        .parse(request.body);
+  router.post(
+    "/visits/:visitId/complete-review",
+    requirePermission("clinic.complete"),
+    async (request, response) =>
       response.json({
-        data: await service.consult(
+        data: await service.completeDoctorReview(
           request.auth!,
           uuid.parse(request.params.visitId),
-          body,
           response.locals.requestId as string | undefined,
         ),
-      });
-    },
-  );
-  router.put(
-    "/visits/:visitId/prescription",
-    requirePermission("prescription.create"),
-    async (request, response) => {
-      const body = z
-        .object({
-          notes: optionalText(2000),
-          items: z
-            .array(
-              z.object({
-                medicineName: z.string().trim().min(1).max(180),
-                strength: optionalText(120),
-                dosage: z.string().trim().min(1).max(120),
-                frequency: z.string().trim().min(1).max(120),
-                duration: z.string().trim().min(1).max(120),
-                route: optionalText(80),
-                quantity: z.coerce.number().positive().optional(),
-                instructions: optionalText(500),
-              }),
-            )
-            .min(1)
-            .max(100),
-        })
-        .parse(request.body);
-      response.json({
-        data: await service.prescribe(
-          request.auth!,
-          uuid.parse(request.params.visitId),
-          body,
-          response.locals.requestId as string | undefined,
-        ),
-      });
-    },
+      }),
   );
   router.post(
     "/visits/:visitId/lab/:labVisitId/sample",

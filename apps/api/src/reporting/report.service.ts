@@ -234,8 +234,8 @@ export class PrismaReportService implements ReportService {
               AND s.business_date BETWEEN ${range.from}::date AND ${range.to}::date
               AND s.status <> 'VOIDED'), 0)::text AS "pharmacyRevenue"
       `);
-      const [topLabTests, topPrescribedMedicines] = await Promise.all([
-        transaction.$queryRaw<Array<{ label: string; count: number }>>(Prisma.sql`
+      const topLabTests = await transaction.$queryRaw<Array<{ label: string; count: number }>>(
+        Prisma.sql`
           SELECT lvt.test_name AS label, count(*)::int AS count
           FROM public.lab_visit_tests lvt
           JOIN public.lab_visits lv ON lv.tenant_id = lvt.tenant_id AND lv.id = lvt.visit_id
@@ -244,18 +244,8 @@ export class PrismaReportService implements ReportService {
             AND lv.created_at >= ${range.from}::date
             AND lv.created_at < (${range.to}::date + interval '1 day')
           GROUP BY lvt.test_name ORDER BY count(*) DESC, lvt.test_name LIMIT 10
-        `),
-        transaction.$queryRaw<Array<{ label: string; count: number }>>(Prisma.sql`
-          SELECT pi.medicine_name AS label, count(*)::int AS count
-          FROM public.prescription_items pi
-          JOIN public.prescriptions p ON p.tenant_id = pi.tenant_id AND p.id = pi.prescription_id
-          WHERE p.tenant_id = ${principal.tenantId}::uuid
-            AND p.branch_id = ${range.branchId}::uuid
-            AND p.created_at >= ${range.from}::date
-            AND p.created_at < (${range.to}::date + interval '1 day')
-          GROUP BY pi.medicine_name ORDER BY count(*) DESC, pi.medicine_name LIMIT 10
-        `),
-      ]);
+        `,
+      );
       const consultationRevenue = clinical?.consultationRevenue ?? "0";
       const labRevenue = clinical?.labRevenue ?? "0";
       const pharmacyRevenue = clinical?.pharmacyRevenue ?? "0";
@@ -283,7 +273,7 @@ export class PrismaReportService implements ReportService {
             .plus(pharmacyRevenue)
             .toFixed(4),
         },
-        charts: { dailyNetSales: trends, topProducts, topLabTests, topPrescribedMedicines },
+        charts: { dailyNetSales: trends, topProducts, topLabTests, topSoldMedicines: topProducts },
       };
     });
   }

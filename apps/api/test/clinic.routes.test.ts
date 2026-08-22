@@ -50,18 +50,18 @@ describe("clinic workflow routes", () => {
     );
   });
 
-  it("keeps doctor-only consultation writes away from reception", async () => {
+  it("keeps doctor-only clinical assessment writes away from reception", async () => {
     const principal: AuthenticatedPrincipal = { ...basePrincipal, role: "RECEPTIONIST" };
     const clinic = new ClinicService();
-    const consult = vi.spyOn(clinic, "consult");
+    const saveAssessment = vi.spyOn(clinic, "saveAssessment");
 
     const response = await request(createApp({ authentication: authentication(principal), clinic }))
-      .put("/api/v1/clinic/visits/10000000-0000-4000-8000-000000000006/consultation")
+      .put("/api/v1/clinic/visits/10000000-0000-4000-8000-000000000006/assessment")
       .set("Cookie", "phms_session=test")
       .send({ chiefComplaint: "Fever", testIds: [] });
 
     expect(response.status).toBe(403);
-    expect(consult).not.toHaveBeenCalled();
+    expect(saveAssessment).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -73,9 +73,9 @@ describe("clinic workflow routes", () => {
     ],
     [
       "LAB_TECHNICIAN",
-      "/api/v1/clinic/visits/10000000-0000-4000-8000-000000000006/prescription",
-      { items: [{ medicineName: "Drug", dosage: "1", frequency: "daily", duration: "5 days" }] },
-      "prescribe",
+      "/api/v1/clinic/visits/10000000-0000-4000-8000-000000000006/complete-review",
+      {},
+      "completeDoctorReview",
     ],
     [
       "PHARMACIST",
@@ -89,26 +89,23 @@ describe("clinic workflow routes", () => {
       const principal: AuthenticatedPrincipal = { ...basePrincipal, role };
       const clinic = new ClinicService();
       const serviceCall = vi.spyOn(clinic, serviceMethod);
-      const response = await request(
-        createApp({ authentication: authentication(principal), clinic }),
-      )
-        .put(path)
-        .set("Cookie", "phms_session=test")
-        .send(body);
+      const agent = request(createApp({ authentication: authentication(principal), clinic }));
+      const pendingResponse = path.endsWith("complete-review") ? agent.post(path) : agent.put(path);
+      const response = await pendingResponse.set("Cookie", "phms_session=test").send(body);
 
       expect(response.status).toBe(403);
       expect(serviceCall).not.toHaveBeenCalled();
     },
   );
 
-  it("validates the structured doctor workflow from assessment through prescription", async () => {
+  it("validates assessment, requested laboratory work, diagnosis, and doctor completion", async () => {
     const principal: AuthenticatedPrincipal = { ...basePrincipal, role: "DOCTOR" };
     const clinic = new ClinicService();
     const visit = { id: "10000000-0000-4000-8000-000000000006" } as never;
     const saveAssessment = vi.spyOn(clinic, "saveAssessment").mockResolvedValue(visit);
     const requestLabTests = vi.spyOn(clinic, "requestLabTests").mockResolvedValue(visit);
     const recordDiagnoses = vi.spyOn(clinic, "recordDiagnoses").mockResolvedValue(visit);
-    const prescribe = vi.spyOn(clinic, "prescribe").mockResolvedValue(visit);
+    const completeDoctorReview = vi.spyOn(clinic, "completeDoctorReview").mockResolvedValue(visit);
     const app = createApp({ authentication: authentication(principal), clinic });
     const visitPath = "/api/v1/clinic/visits/10000000-0000-4000-8000-000000000006";
 
@@ -134,25 +131,12 @@ describe("clinic workflow routes", () => {
       .put(`${visitPath}/diagnoses/FINAL`)
       .set("Cookie", "phms_session=test")
       .send({ diagnoses: [{ description: "Malaria" }, { description: "Mild dehydration" }] });
-    const prescription = await request(app)
-      .put(`${visitPath}/prescription`)
+    const completed = await request(app)
+      .post(`${visitPath}/complete-review`)
       .set("Cookie", "phms_session=test")
-      .send({
-        items: [
-          {
-            medicineName: "Artemether/Lumefantrine",
-            strength: "20mg/120mg",
-            dosage: "4 tablets",
-            frequency: "Twice daily",
-            duration: "3 days",
-            route: "Oral",
-            quantity: 24,
-            instructions: "Take after meals",
-          },
-        ],
-      });
+      .send({});
 
-    expect([assessment.status, labOrder.status, diagnosis.status, prescription.status]).toEqual([
+    expect([assessment.status, labOrder.status, diagnosis.status, completed.status]).toEqual([
       200, 201, 200, 200,
     ]);
     expect(saveAssessment).toHaveBeenCalledWith(
@@ -174,12 +158,31 @@ describe("clinic workflow routes", () => {
       expect.arrayContaining([expect.objectContaining({ description: "Malaria" })]),
       expect.any(String),
     );
-    expect(prescribe).toHaveBeenCalledWith(
+    expect(completeDoctorReview).toHaveBeenCalledWith(
       principal,
       expect.any(String),
-      expect.objectContaining({ items: expect.any(Array) }),
       expect.any(String),
     );
+  });
+
+  it("supports a complete doctor review without laboratory tests", async () => {
+    const principal: AuthenticatedPrincipal = { ...basePrincipal, role: "DOCTOR" };
+    const clinic = new ClinicService();
+    const completedVisit = {
+      id: "10000000-0000-4000-8000-000000000006",
+      status: "COMPLETED",
+    } as never;
+    const completeDoctorReview = vi
+      .spyOn(clinic, "completeDoctorReview")
+      .mockResolvedValue(completedVisit);
+
+    const response = await request(createApp({ authentication: authentication(principal), clinic }))
+      .post("/api/v1/clinic/visits/10000000-0000-4000-8000-000000000006/complete-review")
+      .set("Cookie", "phms_session=test")
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(completeDoctorReview).toHaveBeenCalledOnce();
   });
 
   it("keeps consultation payment confirmation away from doctors", async () => {
