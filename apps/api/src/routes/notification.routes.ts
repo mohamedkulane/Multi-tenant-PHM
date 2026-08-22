@@ -15,7 +15,7 @@ export function createNotificationRouter(
   service: NotificationService = notificationService,
 ) {
   const router = Router();
-  router.use(requireAuthentication(authentication), requirePermission("report.read"));
+  router.use(requireAuthentication(authentication), requirePermission("clinic.read"));
 
   router.get("/", async (request, response) => {
     response.json({

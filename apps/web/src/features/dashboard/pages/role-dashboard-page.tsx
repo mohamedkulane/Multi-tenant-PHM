@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Boxes, ClipboardPlus, FlaskConical, ShoppingCart } from "lucide-react";
+import { Boxes, ClipboardPlus, ShoppingCart } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { getData } from "../../../api/client";
 import {
@@ -14,31 +14,20 @@ import {
 } from "../../../components/ui";
 import { Link } from "../../../lib/navigation";
 import type { Branch, TenantPrincipal } from "../../../types";
+import { DoctorDashboard } from "./doctor-dashboard";
+import { LabTechnicianDashboard } from "./lab-technician-dashboard";
+import { dashboardText, type DashboardRow } from "./dashboard-utils";
 
-type Row = Record<string, unknown>;
-const text = (value: unknown) =>
-  typeof value === "string" || typeof value === "number" ? String(value) : "";
-const copy = {
-  DOCTOR: {
-    eyebrow: "Clinical care",
-    title: "Doctor dashboard",
-    description: "Your patient queue, returned laboratory results, and completed reviews.",
-  },
+const roleCopy = {
   RECEPTIONIST: {
     eyebrow: "Front desk",
     title: "Reception dashboard",
     description: "Register patients, collect clinical fees, and track every hand-off.",
   },
-  LAB_TECHNICIAN: {
-    eyebrow: "Diagnostics",
-    title: "Laboratory dashboard",
-    description: "Paid orders, sample collection, results entry, and completed work.",
-  },
   PHARMACIST: {
     eyebrow: "Dispensary",
     title: "Pharmacy dashboard",
-    description:
-      "Normal FEFO point of sale and medicine stock. Clinical medication orders are on physical paper.",
+    description: "Open the pharmacy point of sale and manage medicine stock.",
   },
 } as const;
 
@@ -49,12 +38,11 @@ export function RoleDashboardPage({
   branch: Branch | undefined;
   principal: TenantPrincipal;
 }) {
-  const role = principal.role as keyof typeof copy;
-  const content = copy[role] ?? copy.DOCTOR;
-  const visits = useQuery({
+  const clinicVisits = useQuery({
     queryKey: ["clinic-visits", branch?.id],
-    queryFn: () => getData<Row[]>(`/clinic/visits?branchId=${branch!.id}`),
-    enabled: Boolean(branch) && role !== "PHARMACIST",
+    queryFn: () => getData<DashboardRow[]>(`/clinic/visits?branchId=${branch!.id}`),
+    enabled: Boolean(branch) && ["DOCTOR", "RECEPTIONIST"].includes(principal.role),
+    refetchInterval: 30_000,
   });
   if (!branch)
     return (
@@ -63,12 +51,17 @@ export function RoleDashboardPage({
         description="Select the working location from the header."
       />
     );
-  if (visits.isLoading) return <LoadingState label="Loading your work queue" />;
-  if (visits.error) return <ErrorState error={visits.error} />;
-  if (role === "PHARMACIST")
+  if (principal.role === "DOCTOR") {
+    if (clinicVisits.isLoading) return <LoadingState label="Loading your clinical dashboard" />;
+    if (clinicVisits.error) return <ErrorState error={clinicVisits.error} />;
+    return <DoctorDashboard principal={principal} visits={clinicVisits.data ?? []} />;
+  }
+  if (principal.role === "LAB_TECHNICIAN")
+    return <LabTechnicianDashboard branch={branch} principal={principal} />;
+  if (principal.role === "PHARMACIST")
     return (
       <>
-        <PageHeader {...content} />
+        <PageHeader {...roleCopy.PHARMACIST} />
         <div className="grid gap-4 sm:grid-cols-2">
           <WorkspaceLink
             to="/sales"
@@ -85,65 +78,42 @@ export function RoleDashboardPage({
         </div>
       </>
     );
-  const all = visits.data ?? [];
-  const waitingDoctor = all.filter((item) =>
-    ["WAITING_FOR_DOCTOR", "DOCTOR_REVIEW", "LAB_RESULTS_READY", "RESULTS_READY"].includes(
-      text(item["status"]),
+  if (clinicVisits.isLoading) return <LoadingState label="Loading reception dashboard" />;
+  if (clinicVisits.error) return <ErrorState error={clinicVisits.error} />;
+  const visits = clinicVisits.data ?? [];
+  const doctorQueue = visits.filter((visit) =>
+    ["WAITING_FOR_DOCTOR", "DOCTOR_REVIEW", "LAB_RESULTS_READY"].includes(
+      dashboardText(visit["status"]),
     ),
   ).length;
-  const payment = all.filter((item) =>
-    ["AWAITING_CONSULTATION_PAYMENT", "AWAITING_LAB_PAYMENT"].includes(text(item["status"])),
+  const payments = visits.filter((visit) =>
+    ["AWAITING_CONSULTATION_PAYMENT", "AWAITING_LAB_PAYMENT"].includes(
+      dashboardText(visit["status"]),
+    ),
   ).length;
-  const laboratory = all.filter((item) =>
-    ["WAITING_FOR_SAMPLE", "WAITING_FOR_LAB", "LAB_IN_PROGRESS"].includes(text(item["status"])),
+  const laboratory = visits.filter((visit) =>
+    ["WAITING_FOR_SAMPLE", "WAITING_FOR_LAB", "LAB_IN_PROGRESS"].includes(
+      dashboardText(visit["status"]),
+    ),
   ).length;
-  const visible =
-    role === "DOCTOR"
-      ? all.filter((item) =>
-          [
-            "WAITING_FOR_DOCTOR",
-            "IN_EXAMINATION",
-            "IN_CONSULTATION",
-            "LAB_RESULTS_READY",
-            "RESULTS_READY",
-            "DOCTOR_REVIEW",
-            "COMPLETED",
-          ].includes(text(item["status"])),
-        )
-      : role === "LAB_TECHNICIAN"
-        ? all.filter((item) =>
-            [
-              "WAITING_FOR_SAMPLE",
-              "WAITING_FOR_LAB",
-              "LAB_IN_PROGRESS",
-              "LAB_RESULTS_READY",
-            ].includes(text(item["status"])),
-          )
-        : all;
   return (
     <>
       <PageHeader
-        {...content}
+        {...roleCopy.RECEPTIONIST}
         actions={
-          role === "RECEPTIONIST" ? (
-            <Link className="btn-primary" to="/reception/visits">
-              <ClipboardPlus size={17} /> Patient desk
-            </Link>
-          ) : role === "LAB_TECHNICIAN" ? (
-            <Link className="btn-primary" to="/lab/orders">
-              <FlaskConical size={17} /> Laboratory orders
-            </Link>
-          ) : undefined
+          <Link className="btn-primary" to="/reception/visits">
+            <ClipboardPlus size={17} /> Patient desk
+          </Link>
         }
       />
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Stat label="Doctor queue" value={waitingDoctor} tone="blue" />
-        <Stat label="Payments required" value={payment} tone="amber" />
+        <Stat label="Doctor queue" value={doctorQueue} tone="blue" />
+        <Stat label="Payments required" value={payments} tone="amber" />
         <Stat label="Laboratory queue" value={laboratory} tone="emerald" />
       </div>
-      <Card title="My work queue" description={`${visible.length} records relevant to your role`}>
+      <Card title="My work queue" description={`${visits.length} patient visits`}>
         <div className="overflow-x-auto">
-          {visible.length ? (
+          {visits.length ? (
             <table className="data-table">
               <thead>
                 <tr>
@@ -151,21 +121,24 @@ export function RoleDashboardPage({
                   <th>Patient</th>
                   <th>Status</th>
                   <th>Created</th>
-                  <th />
+                  <th>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {visible.map((item) => (
-                  <tr key={text(item["id"])}>
-                    <td className="font-semibold">{text(item["visitNumber"])}</td>
-                    <td>{text((item["patient"] as Row)?.["name"])}</td>
+                {visits.map((visit) => (
+                  <tr key={dashboardText(visit["id"])}>
+                    <td className="font-semibold">{dashboardText(visit["visitNumber"])}</td>
+                    <td>{dashboardText((visit["patient"] as DashboardRow)?.["name"])}</td>
                     <td>
-                      <StatusBadge value={text(item["status"])} />
+                      <StatusBadge value={dashboardText(visit["status"])} />
                     </td>
-                    <td>{date(item["createdAt"])}</td>
+                    <td>{date(visit["createdAt"])}</td>
                     <td>
-                      <Link className="btn-secondary" to={`/clinic/visits/${text(item["id"])}`}>
-                        {role === "DOCTOR" ? "Open patient" : "View"}
+                      <Link
+                        className="btn-secondary"
+                        to={`/clinic/visits/${dashboardText(visit["id"])}`}
+                      >
+                        View
                       </Link>
                     </td>
                   </tr>
@@ -173,16 +146,14 @@ export function RoleDashboardPage({
               </tbody>
             </table>
           ) : (
-            <EmptyState
-              title="Queue is clear"
-              description="New work assigned to your role will appear here."
-            />
+            <EmptyState title="Queue is clear" />
           )}
         </div>
       </Card>
     </>
   );
 }
+
 function WorkspaceLink({
   to,
   icon: Icon,

@@ -43,6 +43,9 @@ export function errorMessage(error: unknown) {
       EXPIRED_STOCK_TRANSFER_DENIED: "Daawo dhacday branch kale looma wareejin karo.",
       ROUTE_NOT_FOUND: "Hawshan hadda lama heli karo. Fadlan refresh samee oo mar kale isku day.",
       VALIDATION_FAILED: "Xogta la geliyey ma saxna. Hubi meelaha form-ka oo mar kale isku day.",
+      CURRENT_PASSWORD_INCORRECT: "Password-ka hadda aad isticmaasho waa khalad.",
+      PASSWORD_UNCHANGED: "Password-ka cusub waa inuu ka duwanaadaa kii hore.",
+      EMAIL_ALREADY_IN_USE: "Email-kan waxaa horay u isticmaala account kale.",
     };
     const backendMessage = payload?.error?.message ?? "";
     if (code === "TENANT_SUBSCRIPTION_EXPIRED" && backendMessage) return backendMessage;

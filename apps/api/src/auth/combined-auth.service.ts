@@ -3,7 +3,15 @@ import {
   type SupportAccessService,
 } from "../platform/support-access.service.js";
 import { authService } from "./auth.service.js";
-import type { AuthenticatedPrincipal, AuthService, LoginInput, LoginResult } from "./auth.types.js";
+import type {
+  AuthenticatedPrincipal,
+  AuthService,
+  ChangePasswordInput,
+  LoginInput,
+  LoginResult,
+  UpdateProfileInput,
+} from "./auth.types.js";
+import { AppError } from "../errors/app-error.js";
 
 export class CombinedAuthService implements AuthService {
   constructor(
@@ -28,6 +36,26 @@ export class CombinedAuthService implements AuthService {
       return;
     }
     await this.tenantAuth.logout(rawSessionToken);
+  }
+
+  updateProfile(principal: AuthenticatedPrincipal, input: UpdateProfileInput) {
+    this.requireWritableTenantSession(principal);
+    return this.tenantAuth.updateProfile(principal, input);
+  }
+
+  changePassword(principal: AuthenticatedPrincipal, input: ChangePasswordInput) {
+    this.requireWritableTenantSession(principal);
+    return this.tenantAuth.changePassword(principal, input);
+  }
+
+  private requireWritableTenantSession(principal: AuthenticatedPrincipal) {
+    if (principal.isSupportSession) {
+      throw new AppError({
+        statusCode: 403,
+        code: "SUPPORT_SESSION_READ_ONLY",
+        message: "Support sessions cannot change tenant account information",
+      });
+    }
   }
 }
 

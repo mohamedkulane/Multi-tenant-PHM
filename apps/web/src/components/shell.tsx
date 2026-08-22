@@ -3,6 +3,7 @@ import {
   Bell,
   Boxes,
   Building2,
+  CalendarDays,
   ChevronDown,
   ClipboardPlus,
   CreditCard,
@@ -11,7 +12,9 @@ import {
   HeartPulse,
   LayoutDashboard,
   LifeBuoy,
+  ListChecks,
   LogOut,
+  MessageSquareText,
   Menu,
   PackageSearch,
   Receipt,
@@ -19,6 +22,7 @@ import {
   Settings2,
   ShieldCheck,
   ShoppingCart,
+  Stethoscope,
   Truck,
   Users,
   WalletCards,
@@ -44,6 +48,14 @@ interface NavigationItem {
 const tenantNavigation: NavigationItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["OWNER", "ADMIN"] },
   { to: "/doctor/dashboard", label: "Doctor dashboard", icon: HeartPulse, roles: ["DOCTOR"] },
+  { to: "/doctor/queue", label: "My queue", icon: ListChecks, roles: ["DOCTOR"] },
+  { to: "/doctor/active", label: "Active visits", icon: Stethoscope, roles: ["DOCTOR"] },
+  { to: "/doctor/lab-results", label: "Lab results ready", icon: FlaskConical, roles: ["DOCTOR"] },
+  { to: "/doctor/completed", label: "Completed visits", icon: ClipboardPlus, roles: ["DOCTOR"] },
+  { to: "/doctor/patients", label: "Patients", icon: Users, roles: ["DOCTOR"] },
+  { to: "/doctor/calendar", label: "Calendar", icon: CalendarDays, roles: ["DOCTOR"] },
+  { to: "/doctor/history", label: "Clinical history", icon: FileClock, roles: ["DOCTOR"] },
+  { to: "/doctor/messages", label: "Messages", icon: MessageSquareText, roles: ["DOCTOR"] },
   {
     to: "/reception/dashboard",
     label: "Reception dashboard",
@@ -123,6 +135,7 @@ function Sidebar({
   primaryColor,
   accentColor,
   logoUrl,
+  messageUnread = 0,
 }: {
   navigation: NavigationItem[];
   currentPath: string;
@@ -132,6 +145,7 @@ function Sidebar({
   primaryColor?: string;
   accentColor?: string;
   logoUrl?: string;
+  messageUnread?: number;
 }) {
   const primary = primaryColor ?? "#0d2926";
   const accent = accentColor ?? "#b8f39a";
@@ -205,7 +219,12 @@ function Sidebar({
                 }`}
               >
                 <Icon size={18} />
-                {label}
+                <span className="min-w-0 flex-1 truncate">{label}</span>
+                {to === "/doctor/messages" && messageUnread > 0 ? (
+                  <span className="min-w-5 rounded-full bg-blue-500 px-1.5 text-center text-[10px] font-bold leading-5 text-white">
+                    {messageUnread > 99 ? "99+" : messageUnread}
+                  </span>
+                ) : null}
               </Link>
             );
           })}
@@ -259,8 +278,8 @@ export function TenantShell({
       message: displayText(message["message"], "You have a new platform message."),
       tone: "info",
       durationMs: 15_000,
-      actionLabel: "Open Alerts Center",
-      actionHref: "/operations",
+      actionLabel: principal.role === "DOCTOR" ? "Open messages" : "Open Alerts Center",
+      actionHref: principal.role === "DOCTOR" ? "/doctor/messages" : "/operations",
     });
   }, [notificationItems]);
   const tenantTheme = {
@@ -286,6 +305,7 @@ export function TenantShell({
         primaryColor={workspace.branding?.primaryColor ?? "#0d2926"}
         accentColor={workspace.branding?.accentColor ?? "#b8f39a"}
         {...(workspace.branding?.logoUrl ? { logoUrl: workspace.branding.logoUrl } : {})}
+        messageUnread={unreadNotifications}
       />
       <div className="lg:pl-72">
         <header className="sticky top-0 z-30 flex min-h-18 items-center justify-between gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
@@ -347,7 +367,9 @@ export function TenantShell({
                           className="block w-full border-b border-slate-100 px-4 py-3 text-left hover:bg-slate-50"
                           onClick={() => {
                             setNotificationsOpen(false);
-                            navigate("/operations");
+                            navigate(
+                              principal.role === "DOCTOR" ? "/doctor/messages" : "/operations",
+                            );
                           }}
                         >
                           <span className="text-xs font-bold uppercase text-rose-700">
@@ -367,10 +389,10 @@ export function TenantShell({
                       className="w-full px-4 py-3 text-sm font-bold text-emerald-800 hover:bg-emerald-50"
                       onClick={() => {
                         setNotificationsOpen(false);
-                        navigate("/operations");
+                        navigate(principal.role === "DOCTOR" ? "/doctor/messages" : "/operations");
                       }}
                     >
-                      View all alerts
+                      {principal.role === "DOCTOR" ? "View all messages" : "View all alerts"}
                     </button>
                   </div>
                 ) : null}

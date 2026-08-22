@@ -28,7 +28,8 @@ function requireBranch(principal: AuthenticatedPrincipal, branchId: string) {
 export class PrismaNotificationService implements NotificationService {
   async list(principal: AuthenticatedPrincipal, branchId: string) {
     requireBranch(principal, branchId);
-    await this.scan(principal, branchId, 30);
+    const clinicalOnly = principal.role === "DOCTOR" || principal.role === "LAB_TECHNICIAN";
+    if (!clinicalOnly) await this.scan(principal, branchId, 30);
     return withTenantContext(
       prisma,
       {
@@ -39,14 +40,18 @@ export class PrismaNotificationService implements NotificationService {
       },
       async (transaction) => {
         const [systemItems, systemUnread, platformItems, platformUnread] = await Promise.all([
-          transaction.notification.findMany({
-            where: { tenantId: principal.tenantId, branchId },
-            orderBy: { createdAt: "desc" },
-            take: 100,
-          }),
-          transaction.notification.count({
-            where: { tenantId: principal.tenantId, branchId, readAt: null },
-          }),
+          clinicalOnly
+            ? Promise.resolve([])
+            : transaction.notification.findMany({
+                where: { tenantId: principal.tenantId, branchId },
+                orderBy: { createdAt: "desc" },
+                take: 100,
+              }),
+          clinicalOnly
+            ? Promise.resolve(0)
+            : transaction.notification.count({
+                where: { tenantId: principal.tenantId, branchId, readAt: null },
+              }),
           transaction.platformBroadcastDelivery.findMany({
             where: {
               tenantId: principal.tenantId,

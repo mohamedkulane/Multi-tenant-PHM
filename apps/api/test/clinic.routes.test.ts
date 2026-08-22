@@ -21,6 +21,8 @@ function authentication(principal: AuthenticatedPrincipal): AuthService {
     login: vi.fn(),
     authenticate: vi.fn().mockResolvedValue(principal),
     logout: vi.fn(),
+    updateProfile: vi.fn(),
+    changePassword: vi.fn(),
   };
 }
 

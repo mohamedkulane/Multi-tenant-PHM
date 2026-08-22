@@ -28,6 +28,8 @@ const authentication: AuthService = {
   login: vi.fn(),
   authenticate: vi.fn().mockResolvedValue(principal),
   logout: vi.fn(),
+  updateProfile: vi.fn(),
+  changePassword: vi.fn(),
 };
 
 function services() {
@@ -168,6 +170,8 @@ describe("M12 customer, supplier and laboratory routes", () => {
       login: vi.fn(),
       authenticate: vi.fn().mockResolvedValue(receptionist),
       logout: vi.fn(),
+      updateProfile: vi.fn(),
+      changePassword: vi.fn(),
     };
     const laboratory = new LabService();
     const markResult = vi.spyOn(laboratory, "markResult");
@@ -188,6 +192,8 @@ describe("M12 customer, supplier and laboratory routes", () => {
       login: vi.fn(),
       authenticate: vi.fn().mockResolvedValue(technician),
       logout: vi.fn(),
+      updateProfile: vi.fn(),
+      changePassword: vi.fn(),
     };
     const laboratory = new LabService();
     const markResult = vi

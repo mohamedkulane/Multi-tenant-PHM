@@ -3,8 +3,14 @@ import { env } from "../config/env.js";
 import { prisma } from "../database/prisma.js";
 import { setTransactionContext, withTenantContext } from "../database/tenant-context.js";
 import { AppError } from "../errors/app-error.js";
-import type { AuthenticatedPrincipal, AuthService, LoginInput } from "./auth.types.js";
-import { verifyPassword } from "./password.js";
+import type {
+  AuthenticatedPrincipal,
+  AuthService,
+  ChangePasswordInput,
+  LoginInput,
+  UpdateProfileInput,
+} from "./auth.types.js";
+import { hashPassword, verifyPassword } from "./password.js";
 import { createSessionToken, hashSessionSecret, parseSessionToken } from "./session-token.js";
 
 const invalidCredentials = () =>
@@ -24,7 +30,7 @@ function normalizeLoginName(value: string) {
 function toPrincipal(input: {
   sessionId: string;
   tenant: { id: string; name: string };
-  user: { id: string; fullName: string };
+  user: { id: string; fullName: string; email: string | null };
   membership: {
     id: string;
     username: string;
@@ -39,6 +45,7 @@ function toPrincipal(input: {
     tenantName: input.tenant.name,
     userId: input.user.id,
     fullName: input.user.fullName,
+    email: input.user.email,
     membershipId: input.membership.id,
     username: input.membership.username,
     role: input.membership.role,
@@ -87,7 +94,7 @@ async function loadPrincipal(
     }),
     transaction.user.findUnique({
       where: { id: session.userId },
-      select: { id: true, fullName: true, status: true },
+      select: { id: true, fullName: true, email: true, status: true },
     }),
   ]);
 
@@ -159,6 +166,7 @@ export class PrismaAuthService implements AuthService {
           select: {
             id: true,
             fullName: true,
+            email: true,
             passwordHash: true,
             status: true,
             platformAccess: { select: { active: true } },
@@ -330,6 +338,94 @@ export class PrismaAuthService implements AuthService {
           entityId: session.id,
         },
       });
+    });
+  }
+
+  async updateProfile(principal: AuthenticatedPrincipal, input: UpdateProfileInput) {
+    const fullName = input.fullName.trim();
+    const email = input.email?.trim().toLowerCase() || null;
+    return withTenantContext(prisma, principal, async (transaction) => {
+      await setTransactionContext(transaction, principal);
+      try {
+        const user = await transaction.user.update({
+          where: { id: principal.userId },
+          data: { fullName, email },
+          select: { id: true, fullName: true, email: true },
+        });
+        await transaction.auditLog.create({
+          data: {
+            tenantId: principal.tenantId,
+            actorUserId: principal.userId,
+            actorMembershipId: principal.membershipId,
+            action: "ACCOUNT_PROFILE_UPDATED",
+            entityType: "user",
+            entityId: principal.userId,
+          },
+        });
+        return { ...principal, ...user };
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "P2002"
+        ) {
+          throw new AppError({
+            statusCode: 409,
+            code: "EMAIL_ALREADY_IN_USE",
+            message: "This email address is already in use",
+          });
+        }
+        throw error;
+      }
+    });
+  }
+
+  async changePassword(principal: AuthenticatedPrincipal, input: ChangePasswordInput) {
+    return withTenantContext(prisma, principal, async (transaction) => {
+      await setTransactionContext(transaction, principal);
+      const user = await transaction.user.findUnique({
+        where: { id: principal.userId },
+        select: { passwordHash: true },
+      });
+      if (!user || !(await verifyPassword(user.passwordHash, input.currentPassword))) {
+        throw new AppError({
+          statusCode: 400,
+          code: "CURRENT_PASSWORD_INCORRECT",
+          message: "Current password is incorrect",
+        });
+      }
+      if (await verifyPassword(user.passwordHash, input.newPassword)) {
+        throw new AppError({
+          statusCode: 400,
+          code: "PASSWORD_UNCHANGED",
+          message: "New password must be different from the current password",
+        });
+      }
+      const passwordHash = await hashPassword(input.newPassword);
+      await transaction.user.update({
+        where: { id: principal.userId },
+        data: { passwordHash, tokenVersion: { increment: 1 } },
+      });
+      await transaction.session.updateMany({
+        where: {
+          userId: principal.userId,
+          id: { not: principal.sessionId },
+          revokedAt: null,
+        },
+        data: { revokedAt: new Date() },
+      });
+      await transaction.auditLog.create({
+        data: {
+          tenantId: principal.tenantId,
+          actorUserId: principal.userId,
+          actorMembershipId: principal.membershipId,
+          action: "ACCOUNT_PASSWORD_CHANGED",
+          entityType: "user",
+          entityId: principal.userId,
+        },
+      });
+      return { changed: true as const };
     });
   }
 }

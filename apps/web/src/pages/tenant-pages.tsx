@@ -51,6 +51,7 @@ import { showToast } from "../components/toast";
 import { brandChartPalette } from "../lib/chart-colors";
 import type { Branch, TenantPrincipal, Workspace } from "../types";
 import { appendSaleCartLine, calculateSaleCartTotals, type SaleCartLine } from "./sales-cart";
+import { StaffAccountPage } from "../features/account/staff-account-page";
 
 type Row = Record<string, unknown>;
 
@@ -4844,7 +4845,14 @@ export function TenantAuditPage() {
   );
 }
 
-export function AccountPage({
+export function AccountPage(props: { principal: TenantPrincipal; workspace: Workspace }) {
+  if (["DOCTOR", "LAB_TECHNICIAN"].includes(props.principal.role)) {
+    return <StaffAccountPage {...props} />;
+  }
+  return <WorkspaceAccountPage {...props} />;
+}
+
+function WorkspaceAccountPage({
   principal,
   workspace,
 }: {

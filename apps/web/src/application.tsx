@@ -40,6 +40,12 @@ import {
 import { CustomersPage, LabPage, SuppliersPage } from "./pages/operations-pages";
 import { ClinicalVisitPage } from "./features/clinical/pages/clinical-visit-page";
 import { RoleDashboardPage } from "./features/dashboard/pages/role-dashboard-page";
+import {
+  DoctorCalendarPage,
+  DoctorMessagesPage,
+  DoctorWorkspacePage,
+  type DoctorWorkspaceMode,
+} from "./features/dashboard/pages/doctor-workspace-pages";
 import { ReceptionDeskPage } from "./features/reception/pages/reception-desk-page";
 import { ClinicalPrintPage, type ClinicalPrintKind } from "./pages/clinical-print-page";
 import type { PlatformPrincipal, TenantPrincipal, Workspace } from "./types";
@@ -183,16 +189,33 @@ function TenantApplication({ pathname }: { pathname: string }) {
     navigate(tenantLandingPath(principal.data.role), true);
     page = <LoadingState label="Opening your role workspace" />;
   } else if (
-    [
-      "/doctor/dashboard",
-      "/doctor/queue",
-      "/reception/dashboard",
-      "/lab/dashboard",
-      "/pharmacy/dashboard",
-    ].includes(pathname)
+    ["/doctor/dashboard", "/reception/dashboard", "/lab/dashboard", "/pharmacy/dashboard"].includes(
+      pathname,
+    )
   )
     page = <RoleDashboardPage branch={branch} principal={principal.data} />;
-  else if (pathname === "/reception/visits")
+  else if (pathname === "/doctor/calendar") page = <DoctorCalendarPage branch={branch} />;
+  else if (pathname === "/doctor/messages") page = <DoctorMessagesPage branch={branch} />;
+  else if (
+    [
+      "/doctor/queue",
+      "/doctor/active",
+      "/doctor/lab-results",
+      "/doctor/completed",
+      "/doctor/patients",
+      "/doctor/history",
+    ].includes(pathname)
+  ) {
+    const modes: Record<string, DoctorWorkspaceMode> = {
+      "/doctor/queue": "queue",
+      "/doctor/active": "active",
+      "/doctor/lab-results": "results",
+      "/doctor/completed": "completed",
+      "/doctor/patients": "patients",
+      "/doctor/history": "history",
+    };
+    page = <DoctorWorkspacePage branch={branch} mode={modes[pathname]!} />;
+  } else if (pathname === "/reception/visits")
     page = <ReceptionDeskPage branch={branch} workspace={workspace.data} />;
   else if (pathname === "/products")
     page = <ProductsPage principal={principal.data} branch={branch} />;

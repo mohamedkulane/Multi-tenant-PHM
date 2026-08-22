@@ -26,6 +26,8 @@ function fakeAuth(overrides: Partial<AuthService> = {}): AuthService {
     }),
     authenticate: vi.fn().mockResolvedValue(principal),
     logout: vi.fn().mockResolvedValue(undefined),
+    updateProfile: vi.fn().mockResolvedValue(principal),
+    changePassword: vi.fn().mockResolvedValue({ changed: true }),
     ...overrides,
   };
 }
@@ -92,6 +94,64 @@ describe("authentication routes", () => {
     expect(response.status).toBe(401);
     expect(authenticate).toHaveBeenCalledWith(undefined);
   });
+
+  it("updates the signed-in staff profile", async () => {
+    const updateProfile = vi.fn<AuthService["updateProfile"]>().mockResolvedValue({
+      ...principal,
+      fullName: "Dr. Amina Hassan",
+      email: "amina@example.test",
+    });
+    const app = createApp({ authentication: fakeAuth({ updateProfile }) });
+    const response = await request(app)
+      .put("/api/v1/auth/profile")
+      .set("Cookie", `phms_session=${principal.tenantId}.${"a".repeat(43)}`)
+      .send({ fullName: "Dr. Amina Hassan", email: "amina@example.test" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.fullName).toBe("Dr. Amina Hassan");
+    expect(updateProfile).toHaveBeenCalledWith(
+      principal,
+      expect.objectContaining({ email: "amina@example.test" }),
+    );
+  });
+
+  it("validates and changes the signed-in staff password", async () => {
+    const changePassword = vi.fn<AuthService["changePassword"]>().mockResolvedValue({
+      changed: true,
+    });
+    const app = createApp({ authentication: fakeAuth({ changePassword }) });
+    const response = await request(app)
+      .post("/api/v1/auth/change-password")
+      .set("Cookie", `phms_session=${principal.tenantId}.${"a".repeat(43)}`)
+      .send({
+        currentPassword: "CurrentPassword123!",
+        newPassword: "NewSecurePassword123!",
+        confirmPassword: "NewSecurePassword123!",
+      });
+
+    expect(response.status).toBe(200);
+    expect(changePassword).toHaveBeenCalledWith(principal, {
+      currentPassword: "CurrentPassword123!",
+      newPassword: "NewSecurePassword123!",
+    });
+  });
+
+  it("rejects mismatched password confirmation", async () => {
+    const changePassword = vi.fn<AuthService["changePassword"]>();
+    const app = createApp({ authentication: fakeAuth({ changePassword }) });
+    const response = await request(app)
+      .post("/api/v1/auth/change-password")
+      .set("Cookie", `phms_session=${principal.tenantId}.${"a".repeat(43)}`)
+      .send({
+        currentPassword: "CurrentPassword123!",
+        newPassword: "NewSecurePassword123!",
+        confirmPassword: "DifferentPassword123!",
+      });
+
+    expect(response.status).toBe(400);
+    expect(changePassword).not.toHaveBeenCalled();
+  });
+
   it("revokes the server session and clears the cookie on logout", async () => {
     const logout = vi.fn<AuthService["logout"]>().mockResolvedValue(undefined);
     const app = createApp({ authentication: fakeAuth({ logout }) });

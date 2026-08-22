@@ -4,6 +4,7 @@ export interface TenantPrincipal {
   tenantName: string;
   userId: string;
   fullName: string;
+  email?: string | null;
   membershipId: string;
   username: string;
   role: string;
