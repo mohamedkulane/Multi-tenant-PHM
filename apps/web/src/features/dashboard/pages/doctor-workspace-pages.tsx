@@ -143,9 +143,9 @@ export function DoctorWorkspacePage({
                       <td>
                         <Link
                           className="btn-primary"
-                          to={`/clinic/visits/${dashboardText(visit["id"])}`}
+                          to={`/clinic/visits/${dashboardText(visit["id"])}${mode === "results" ? "?section=results" : ""}`}
                         >
-                          Open patient
+                          {mode === "results" ? "Review results" : "Open patient"}
                         </Link>
                       </td>
                     </tr>

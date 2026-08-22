@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, FlaskConical, Save, Stethoscope } from "lucide-react";
+import { CheckCircle2, FlaskConical, Printer, Save, Stethoscope } from "lucide-react";
 import { useEffect, useState } from "react";
 import { errorMessage } from "../../../api/client";
 import { showToast } from "../../../components/toast";
 import { Card, ErrorState, Field, LoadingState, StatusBadge } from "../../../components/ui";
 import type { TenantPrincipal, Workspace } from "../../../types";
+import { Link } from "../../../lib/navigation";
 import { LabTestSelector } from "../../laboratory/components/lab-test-selector";
 import { clinicalApi } from "../api/clinical-api";
 import { clinicalKeys } from "../api/clinical-queries";
@@ -71,7 +72,10 @@ export function ClinicalVisitPage({
   principal: TenantPrincipal;
 }) {
   const client = useQueryClient();
-  const [section, setSection] = useState<ClinicalSection>("overview");
+  const requestedSection = new URLSearchParams(window.location.search).get("section");
+  const [section, setSection] = useState<ClinicalSection>(
+    requestedSection === "results" ? "results" : "overview",
+  );
   const [assessment, setAssessment] = useState<Assessment>(blank);
   const [loaded, setLoaded] = useState(false);
   const [tests, setTests] = useState<string[]>([]);
@@ -394,6 +398,124 @@ export function ClinicalVisitPage({
           />
         </Card>
       ) : null}
+      {section === "results" ? (
+        <Card
+          title="Laboratory results"
+          description="Review the completed laboratory findings before recording the final diagnosis."
+        >
+          <div className="space-y-5 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  {labOrders.length
+                    ? `${labOrders.length} laboratory order${labOrders.length === 1 ? "" : "s"}`
+                    : "No laboratory order"}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Results are read-only for the Doctor and contain no financial information.
+                </p>
+              </div>
+              {labOrders.some((order) => clinicalText(order["status"]) === "COMPLETED") ? (
+                <Link className="btn-secondary" to={`/clinic/visits/${visitId}/print/lab`}>
+                  <Printer size={16} /> Print lab report
+                </Link>
+              ) : null}
+            </div>
+            {labOrders.map((order) => {
+              const orderTests = clinicalRows(order["tests"]);
+              return (
+                <section
+                  key={clinicalText(order["id"])}
+                  className="overflow-hidden rounded-2xl border border-slate-200"
+                >
+                  <header className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 px-4 py-3">
+                    <div>
+                      <p className="font-mono text-xs font-bold text-slate-500">
+                        {clinicalText(order["visitNumber"])}
+                      </p>
+                      <p className="mt-1 text-sm font-bold text-slate-900">
+                        {orderTests.length} test{orderTests.length === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {clinicalText(order["paymentStatus"], "") === "PAID" ? (
+                        <StatusBadge value="PAID" />
+                      ) : null}
+                      <StatusBadge value={clinicalText(order["status"])} />
+                    </div>
+                  </header>
+                  <div className="grid gap-3 p-4 lg:grid-cols-2">
+                    {orderTests.map((test) => {
+                      const resultData = asObject(test["resultData"]);
+                      const result =
+                        clinicalText(test["resultValue"], "") ||
+                        clinicalText(test["numericValue"], "") ||
+                        clinicalText(test["resultStatus"], "PENDING");
+                      return (
+                        <article
+                          key={clinicalText(test["id"])}
+                          className="rounded-xl border border-slate-200 p-4"
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                {clinicalText(test["categoryName"], "Laboratory")}
+                              </p>
+                              <h3 className="mt-1 font-bold text-slate-950">
+                                {clinicalText(test["testName"])}
+                              </h3>
+                            </div>
+                            <StatusBadge value={clinicalText(test["resultStatus"])} />
+                          </div>
+                          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                            <ResultDetail
+                              label="Result"
+                              value={`${result}${test["unit"] ? ` ${clinicalText(test["unit"])}` : ""}`}
+                            />
+                            <ResultDetail
+                              label="Interpretation"
+                              value={clinicalText(test["interpretation"], "Not specified")}
+                            />
+                            <ResultDetail
+                              label="Reference range"
+                              value={clinicalText(test["referenceRange"], "Not configured")}
+                            />
+                            <ResultDetail
+                              label="Laboratory notes"
+                              value={clinicalText(test["resultNote"], "No notes")}
+                            />
+                          </dl>
+                          {Object.keys(resultData).length ? (
+                            <div className="mt-4 rounded-lg bg-slate-50 p-3">
+                              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                Panel components
+                              </p>
+                              <dl className="mt-2 grid gap-2 sm:grid-cols-2">
+                                {Object.entries(resultData).map(([name, value]) => (
+                                  <ResultDetail
+                                    key={name}
+                                    label={name}
+                                    value={clinicalText(value)}
+                                  />
+                                ))}
+                              </dl>
+                            </div>
+                          ) : null}
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+            {!labOrders.length ? (
+              <p className="rounded-xl bg-slate-50 p-6 text-center text-sm text-slate-500">
+                No laboratory tests have been requested for this visit.
+              </p>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
       {section === "diagnosis" ? (
         <Card
           title="Final diagnosis"
@@ -481,6 +603,14 @@ function Summary({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-xs font-bold tracking-wide text-slate-500 uppercase">{label}</p>
       <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{value || "Not recorded"}</p>
+    </div>
+  );
+}
+function ResultDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold text-slate-500">{label}</dt>
+      <dd className="mt-1 break-words font-semibold text-slate-900">{value || "—"}</dd>
     </div>
   );
 }

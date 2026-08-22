@@ -274,6 +274,7 @@ function DoctorQueue({ visits }: { visits: DashboardRow[] }) {
                 const patient = dashboardPatient(visit);
                 const minutes = elapsedMinutes(visit["createdAt"]);
                 const inExam = activeStatuses.includes(status(visit));
+                const hasReadyResults = resultStatuses.includes(status(visit));
                 return (
                   <tr key={dashboardText(visit["id"])}>
                     <td>
@@ -298,9 +299,9 @@ function DoctorQueue({ visits }: { visits: DashboardRow[] }) {
                     <td>
                       <Link
                         className={inExam ? "btn-secondary" : "btn-primary"}
-                        to={`/clinic/visits/${dashboardText(visit["id"])}`}
+                        to={`/clinic/visits/${dashboardText(visit["id"])}${hasReadyResults ? "?section=results" : ""}`}
                       >
-                        {inExam ? "Continue" : "Open patient"}
+                        {hasReadyResults ? "Review results" : inExam ? "Continue" : "Open patient"}
                       </Link>
                     </td>
                   </tr>
@@ -406,7 +407,7 @@ function ScheduleRow({ visit }: { visit: DashboardRow }) {
 function ResultRow({ visit }: { visit: DashboardRow }) {
   return (
     <Link
-      to={`/clinic/visits/${dashboardText(visit["id"])}`}
+      to={`/clinic/visits/${dashboardText(visit["id"])}?section=results`}
       className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50"
     >
       <span className="grid size-9 shrink-0 place-items-center rounded-full bg-violet-50 text-violet-600">

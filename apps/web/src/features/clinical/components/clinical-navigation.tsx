@@ -1,11 +1,12 @@
 export type ClinicalSection =
-  "overview" | "assessment" | "examination" | "laboratory" | "diagnosis" | "summary";
+  "overview" | "assessment" | "examination" | "laboratory" | "results" | "diagnosis" | "summary";
 
 const sections: Array<[ClinicalSection, string]> = [
   ["overview", "Overview"],
   ["assessment", "Assessment"],
   ["examination", "Examination"],
   ["laboratory", "Laboratory"],
+  ["results", "Lab Results"],
   ["diagnosis", "Diagnosis"],
   ["summary", "Summary"],
 ];
