@@ -5,7 +5,7 @@ import { errorMessage } from "../../../api/client";
 import { showToast } from "../../../components/toast";
 import { Card, ErrorState, Field, LoadingState, StatusBadge } from "../../../components/ui";
 import type { TenantPrincipal, Workspace } from "../../../types";
-import { Link } from "../../../lib/navigation";
+import { Link, navigate } from "../../../lib/navigation";
 import { LabTestSelector } from "../../laboratory/components/lab-test-selector";
 import { clinicalApi } from "../api/clinical-api";
 import { clinicalKeys } from "../api/clinical-queries";
@@ -72,10 +72,7 @@ export function ClinicalVisitPage({
   principal: TenantPrincipal;
 }) {
   const client = useQueryClient();
-  const requestedSection = new URLSearchParams(window.location.search).get("section");
-  const [section, setSection] = useState<ClinicalSection>(
-    requestedSection === "results" ? "results" : "overview",
-  );
+  const [section, setSection] = useState<ClinicalSection>("overview");
   const [assessment, setAssessment] = useState<Assessment>(blank);
   const [loaded, setLoaded] = useState(false);
   const [tests, setTests] = useState<string[]>([]);
@@ -212,7 +209,16 @@ export function ClinicalVisitPage({
   return (
     <div className="clinical-visit-page mx-auto max-w-7xl space-y-5">
       <PatientContextHeader visit={visit.data} history={history.data} />
-      <ClinicalNavigation value={section} onChange={setSection} />
+      <ClinicalNavigation
+        value={section}
+        onChange={(nextSection) => {
+          if (nextSection === "results") {
+            navigate(`/doctor/visits/${visitId}/lab-results`);
+            return;
+          }
+          setSection(nextSection);
+        }}
+      />
       {section === "overview" ? (
         <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
           <Card title="Current clinical overview">

@@ -39,6 +39,7 @@ import {
 } from "./pages/tenant-pages";
 import { CustomersPage, LabPage, SuppliersPage } from "./pages/operations-pages";
 import { ClinicalVisitPage } from "./features/clinical/pages/clinical-visit-page";
+import { VisitLabResultsPage } from "./features/clinical/pages/visit-lab-results-page";
 import { RoleDashboardPage } from "./features/dashboard/pages/role-dashboard-page";
 import {
   DoctorCalendarPage,
@@ -168,6 +169,7 @@ function TenantApplication({ pathname }: { pathname: string }) {
     /^\/clinic\/visits\/([^/]+)\/print\/(lab|consultation-receipt|lab-receipt)$/,
   );
   const clinicalVisitMatch = pathname.match(/^\/clinic\/visits\/([^/]+)$/);
+  const doctorLabResultMatch = pathname.match(/^\/doctor\/visits\/([^/]+)\/lab-results$/);
   if (clinicalPrintMatch)
     page = (
       <ClinicalPrintPage
@@ -185,6 +187,7 @@ function TenantApplication({ pathname }: { pathname: string }) {
         principal={principal.data}
       />
     );
+  else if (doctorLabResultMatch) page = <VisitLabResultsPage visitId={doctorLabResultMatch[1]!} />;
   else if (pathname === "/clinic") {
     navigate(tenantLandingPath(principal.data.role), true);
     page = <LoadingState label="Opening your role workspace" />;

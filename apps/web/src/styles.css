@@ -485,6 +485,16 @@ button:disabled {
   margin: 0 auto 1rem;
 }
 
+.patient-lab-print-order {
+  margin-top: 1.5rem;
+  break-inside: avoid;
+}
+
+.patient-lab-print-order h2 {
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
 .clinical-print-sheet {
   width: min(100%, 210mm);
   min-height: 270mm;

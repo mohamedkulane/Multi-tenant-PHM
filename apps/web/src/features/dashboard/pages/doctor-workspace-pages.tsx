@@ -13,7 +13,13 @@ import {
 import { showToast } from "../../../components/toast";
 import { Link } from "../../../lib/navigation";
 import type { Branch } from "../../../types";
-import { dashboardPatient, dashboardText, shortTime, type DashboardRow } from "./dashboard-utils";
+import {
+  dashboardPatient,
+  dashboardRows,
+  dashboardText,
+  shortTime,
+  type DashboardRow,
+} from "./dashboard-utils";
 
 export type DoctorWorkspaceMode =
   "queue" | "active" | "results" | "completed" | "patients" | "history";
@@ -27,8 +33,8 @@ const modeInfo: Record<DoctorWorkspaceMode, { title: string; description: string
     description: "Consultations currently in examination or review.",
   },
   results: {
-    title: "Lab results ready",
-    description: "Returned laboratory results awaiting your clinical review.",
+    title: "Patient laboratory results",
+    description: "Search by patient or visit, then review and print that visit's results.",
   },
   completed: { title: "Completed visits", description: "Doctor reviews completed and handed off." },
   patients: {
@@ -48,6 +54,16 @@ function useDoctorVisits(branch: Branch | undefined) {
     enabled: Boolean(branch),
     refetchInterval: 30_000,
   });
+}
+
+function resultTests(visit: DashboardRow) {
+  return dashboardRows(visit["labVisits"]).flatMap((order) => dashboardRows(order["tests"]));
+}
+
+function hasLaboratoryResult(visit: DashboardRow) {
+  return resultTests(visit).some(
+    (test) => (dashboardText(test["resultStatus"]) || "PENDING") !== "PENDING",
+  );
 }
 
 export function DoctorWorkspacePage({
@@ -73,18 +89,26 @@ export function DoctorWorkspacePage({
     )
       return false;
     if (mode === "active" && !["IN_EXAMINATION", "IN_CONSULTATION"].includes(status)) return false;
-    if (
-      mode === "results" &&
-      !["LAB_RESULTS_READY", "RESULTS_READY", "DOCTOR_REVIEW"].includes(status)
-    )
-      return false;
+    if (mode === "results" && !hasLaboratoryResult(visit)) return false;
     if ((mode === "completed" || mode === "history") && status !== "COMPLETED") return false;
     const patient = dashboardPatient(visit);
     return (
       !searchText ||
-      [patient["name"], patient["patientNumber"], visit["visitNumber"], status].some((value) =>
-        dashboardText(value).toLowerCase().includes(searchText),
-      )
+      [
+        patient["name"],
+        patient["patientNumber"],
+        patient["phone"],
+        visit["visitNumber"],
+        status,
+        ...dashboardRows(visit["labVisits"]).flatMap((order) => [
+          order["visitNumber"],
+          ...dashboardRows(order["tests"]).flatMap((test) => [
+            test["testName"],
+            test["resultValue"],
+            test["resultStatus"],
+          ]),
+        ]),
+      ].some((value) => dashboardText(value).toLowerCase().includes(searchText))
     );
   });
   const records =
@@ -104,7 +128,11 @@ export function DoctorWorkspacePage({
             <Search className="absolute top-1/2 left-3 -translate-y-1/2 text-slate-400" size={18} />
             <input
               className="input pl-10"
-              placeholder="Search patient, visit number or status"
+              placeholder={
+                mode === "results"
+                  ? "Search patient, visit, lab order, test or result"
+                  : "Search patient, visit number or status"
+              }
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
@@ -119,6 +147,7 @@ export function DoctorWorkspacePage({
                   <th>Visit</th>
                   <th>Status</th>
                   <th>Arrival</th>
+                  {mode === "results" ? <th>Tests</th> : null}
                   <th>Action</th>
                 </tr>
               </thead>
@@ -140,12 +169,17 @@ export function DoctorWorkspacePage({
                         <StatusBadge value={dashboardText(visit["status"])} />
                       </td>
                       <td>{shortTime(visit["createdAt"])}</td>
+                      {mode === "results" ? <td>{resultTests(visit).length}</td> : null}
                       <td>
                         <Link
                           className="btn-primary"
-                          to={`/clinic/visits/${dashboardText(visit["id"])}${mode === "results" ? "?section=results" : ""}`}
+                          to={
+                            mode === "results"
+                              ? `/doctor/visits/${dashboardText(visit["id"])}/lab-results`
+                              : `/clinic/visits/${dashboardText(visit["id"])}`
+                          }
                         >
-                          {mode === "results" ? "Review results" : "Open patient"}
+                          {mode === "results" ? "View" : "Open patient"}
                         </Link>
                       </td>
                     </tr>

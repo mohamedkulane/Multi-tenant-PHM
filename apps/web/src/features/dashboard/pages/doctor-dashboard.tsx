@@ -299,7 +299,11 @@ function DoctorQueue({ visits }: { visits: DashboardRow[] }) {
                     <td>
                       <Link
                         className={inExam ? "btn-secondary" : "btn-primary"}
-                        to={`/clinic/visits/${dashboardText(visit["id"])}${hasReadyResults ? "?section=results" : ""}`}
+                        to={
+                          hasReadyResults
+                            ? `/doctor/visits/${dashboardText(visit["id"])}/lab-results`
+                            : `/clinic/visits/${dashboardText(visit["id"])}`
+                        }
                       >
                         {hasReadyResults ? "Review results" : inExam ? "Continue" : "Open patient"}
                       </Link>
@@ -407,7 +411,7 @@ function ScheduleRow({ visit }: { visit: DashboardRow }) {
 function ResultRow({ visit }: { visit: DashboardRow }) {
   return (
     <Link
-      to={`/clinic/visits/${dashboardText(visit["id"])}?section=results`}
+      to={`/doctor/visits/${dashboardText(visit["id"])}/lab-results`}
       className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50"
     >
       <span className="grid size-9 shrink-0 place-items-center rounded-full bg-violet-50 text-violet-600">

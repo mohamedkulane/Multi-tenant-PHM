@@ -62,50 +62,63 @@ function Patient({ visit }: { visit: Row }) {
 }
 
 function LabDocument({ visit, workspace }: { visit: Row; workspace: Workspace }) {
-  const order = rows(visit["labVisits"])[0];
-  if (!order) return <EmptyState title="Laboratory order not found" />;
+  const orders = rows(visit["labVisits"]);
+  if (!orders.length) return <EmptyState title="Laboratory order not found" />;
   return (
     <article className="clinical-print-sheet clinical-a4-sheet">
       <Header workspace={workspace} title="LABORATORY RESULT" />
       <Patient visit={visit} />
       <section className="clinical-print-meta">
         <div>
-          <span>Order</span>
-          <strong>{text(order["visitNumber"]) || text(order["id"])}</strong>
+          <span>Visit date</span>
+          <strong>{date(visit["createdAt"])}</strong>
         </div>
         <div>
-          <span>Date</span>
-          <strong>{date(order["createdAt"])}</strong>
+          <span>Lab orders</span>
+          <strong>{orders.length}</strong>
         </div>
         <div>
-          <span>Sample</span>
-          <strong>{text(order["sampleId"]) || "—"}</strong>
+          <span>Tests</span>
+          <strong>{orders.reduce((total, order) => total + rows(order["tests"]).length, 0)}</strong>
         </div>
         <div>
           <span>Status</span>
-          <StatusBadge value={text(order["status"])} />
+          <StatusBadge value="COMPLETED" />
         </div>
       </section>
-      <table className="clinical-print-table">
-        <thead>
-          <tr>
-            <th>Test</th>
-            <th>Result</th>
-            <th>Interpretation</th>
-            <th>Reference</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows(order["tests"]).map((test) => (
-            <tr key={text(test["id"])}>
-              <td>{text(test["testName"])}</td>
-              <td>{text(test["resultValue"]) || text(test["resultText"]) || "Pending"}</td>
-              <td>{text(test["interpretation"]) || "—"}</td>
-              <td>{text(test["referenceRange"]) || "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {orders.map((order) => (
+        <section key={text(order["id"])} className="patient-lab-print-order">
+          <h2>
+            {text(order["visitNumber"]) || text(order["id"])} · {date(order["createdAt"])}
+          </h2>
+          <table className="clinical-print-table">
+            <thead>
+              <tr>
+                <th>Test</th>
+                <th>Result</th>
+                <th>Interpretation</th>
+                <th>Reference</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows(order["tests"]).map((test) => (
+                <tr key={text(test["id"])}>
+                  <td>{text(test["testName"])}</td>
+                  <td>
+                    {text(test["resultValue"]) ||
+                      text(test["numericValue"]) ||
+                      text(test["resultStatus"]) ||
+                      "Pending"}
+                    {test["unit"] ? ` ${text(test["unit"])}` : ""}
+                  </td>
+                  <td>{text(test["interpretation"]) || "—"}</td>
+                  <td>{text(test["referenceRange"]) || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      ))}
       <footer>
         {workspace.branding?.invoiceFooter ||
           "Results must be interpreted with the patient's clinical findings."}
@@ -191,7 +204,16 @@ export function ClinicalPrintPage({
   return (
     <div className="clinical-print-page">
       <div className="clinical-print-actions print:hidden">
-        <button className="btn-secondary" onClick={() => navigate(`/clinic/visits/${visitId}`)}>
+        <button
+          className="btn-secondary"
+          onClick={() =>
+            navigate(
+              kind === "lab"
+                ? `/doctor/visits/${visitId}/lab-results`
+                : `/clinic/visits/${visitId}`,
+            )
+          }
+        >
           <ArrowLeft size={16} /> Back
         </button>
         <button className="btn-primary" onClick={() => window.print()}>
