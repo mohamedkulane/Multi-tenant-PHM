@@ -854,6 +854,152 @@ button:disabled {
   scrollbar-width: thin;
 }
 
+.clinical-patient-header {
+  overflow: hidden;
+  border: 1px solid #dbe4ea;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 10px 35px rgb(15 23 42 / 5%);
+}
+
+.clinical-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 1rem 1.25rem 0;
+  color: #475569;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.clinical-patient-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.clinical-kicker {
+  margin-bottom: 0.25rem;
+  color: #047857;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.clinical-patient-heading h1 {
+  color: #0f172a;
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.clinical-patient-heading p:last-child {
+  margin-top: 0.3rem;
+  color: #64748b;
+  font-size: 0.875rem;
+}
+
+.clinical-visit-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  color: #334155;
+  font-size: 0.875rem;
+}
+
+.clinical-context-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.clinical-context-strip > div {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.1rem 0.55rem;
+  min-width: 0;
+  padding: 0.9rem 1.1rem;
+  border-right: 1px solid #e2e8f0;
+}
+
+.clinical-context-strip > div:last-child {
+  border-right: 0;
+}
+
+.clinical-context-strip svg {
+  grid-row: 1 / span 2;
+  margin-top: 0.15rem;
+  color: #047857;
+}
+
+.clinical-context-strip dt {
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.clinical-context-strip dd {
+  overflow-wrap: anywhere;
+  color: #1e293b;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.clinical-timeline,
+.clinical-history-list {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.clinical-timeline li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.1rem 0.65rem;
+}
+
+.clinical-timeline li > span {
+  grid-row: 1 / span 2;
+  margin-top: 0.15rem;
+  color: #059669;
+}
+
+.clinical-timeline time {
+  color: #64748b;
+  font-size: 0.72rem;
+}
+
+.clinical-timeline strong {
+  color: #334155;
+  font-size: 0.85rem;
+}
+
+.clinical-history-list article {
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 0.85rem;
+}
+
+.clinical-history-list article > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.clinical-history-list p {
+  margin-top: 0.5rem;
+  color: #475569;
+  font-size: 0.78rem;
+}
+
 .clinical-tabs button {
   min-height: 2.75rem;
   flex: 0 0 auto;
@@ -873,6 +1019,26 @@ button:disabled {
 }
 
 @media (max-width: 640px) {
+  .clinical-patient-heading {
+    display: grid;
+  }
+
+  .clinical-visit-identity {
+    justify-content: flex-start;
+  }
+
+  .clinical-context-strip {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .clinical-context-strip > div:nth-child(2) {
+    border-right: 0;
+  }
+
+  .clinical-context-strip > div:nth-child(-n + 2) {
+    border-bottom: 1px solid #e2e8f0;
+  }
+
   .clinical-visit-page .btn-primary,
   .clinical-visit-page .btn-secondary {
     width: 100%;

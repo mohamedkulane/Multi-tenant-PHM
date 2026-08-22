@@ -6,17 +6,16 @@ export type SaleCartLine = {
   packageQuantity: number;
   unitPrice: number;
   unitsPerPackage: string;
-  prescriptionItemId?: string | undefined;
 };
 
 export function appendSaleCartLine(cart: SaleCartLine[], line: SaleCartLine) {
   const existing = cart.find(
-    (item) => item.productId === line.productId && item.packageCode === line.packageCode && item.prescriptionItemId === line.prescriptionItemId,
+    (item) => item.productId === line.productId && item.packageCode === line.packageCode,
   );
 
   if (existing) {
     return cart.map((item) =>
-      item.productId === line.productId && item.packageCode === line.packageCode && item.prescriptionItemId === line.prescriptionItemId
+      item.productId === line.productId && item.packageCode === line.packageCode
         ? { ...item, packageQuantity: item.packageQuantity + line.packageQuantity }
         : item,
     );

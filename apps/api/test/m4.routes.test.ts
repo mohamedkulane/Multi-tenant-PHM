@@ -94,7 +94,7 @@ describe("M4 API routes", () => {
     expect(sales.checkout).not.toHaveBeenCalled();
   });
 
-  it("passes prescription and visit links into the existing atomic checkout", async () => {
+  it("optionally links a completed clinic visit to the existing atomic checkout", async () => {
     const sales = fakeSales();
     const response = await request(createApp({ authentication, sales, expenses: fakeExpenses() }))
       .post("/api/v1/sales")
@@ -103,16 +103,14 @@ describe("M4 API routes", () => {
         branchId,
         customerName: "Clinical patient",
         clinicVisitId: saleId,
-        prescriptionId: categoryId,
         amountPaid: "5.0000",
         paymentMethod: "CASH",
-        idempotencyKey: "checkout:prescription:1",
+        idempotencyKey: "checkout:clinic-visit:1",
         lines: [
           {
             productId,
             packageCode: "unit",
             packageQuantity: 2,
-            prescriptionItemId: tenantId,
           },
         ],
       });
@@ -123,8 +121,7 @@ describe("M4 API routes", () => {
       principal,
       expect.objectContaining({
         clinicVisitId: saleId,
-        prescriptionId: categoryId,
-        lines: [expect.objectContaining({ prescriptionItemId: tenantId })],
+        lines: [expect.objectContaining({ productId })],
       }),
       expect.any(String),
     );

@@ -16,7 +16,7 @@ export const permissions = [
   "clinic.register",
   "clinic.payment",
   "clinic.consult",
-  "clinic.prescribe",
+  "clinic.complete",
   "clinic.sample",
   "patient.read",
   "patient.create",
@@ -26,9 +26,6 @@ export const permissions = [
   "lab.order",
   "lab.sample",
   "diagnosis.create",
-  "prescription.read",
-  "prescription.create",
-  "prescription.dispense",
   "receipt.print",
   "lab.read",
   "lab.manage",
@@ -60,13 +57,11 @@ const rolePermissions: Record<TenantRole, ReadonlySet<Permission>> = {
     "patient.read",
     "clinic.history",
     "clinic.consult",
-    "clinic.prescribe",
+    "clinic.complete",
     "clinic.examine",
     "lab.read",
     "lab.order",
     "diagnosis.create",
-    "prescription.read",
-    "prescription.create",
     "receipt.print",
   ]),
   RECEPTIONIST: new Set([
@@ -92,8 +87,6 @@ const rolePermissions: Record<TenantRole, ReadonlySet<Permission>> = {
     "customer.manage",
     "clinic.read",
     "patient.read",
-    "prescription.read",
-    "prescription.dispense",
     "receipt.print",
     "inventory.read",
     "inventory.manage",
@@ -111,7 +104,8 @@ const rolePermissions: Record<TenantRole, ReadonlySet<Permission>> = {
     "lab.read",
     "lab.sample",
     "lab.result",
-  ]),};
+  ]),
+};
 
 export function roleHasPermission(role: TenantRole, permission: Permission) {
   return rolePermissions[role].has(permission);

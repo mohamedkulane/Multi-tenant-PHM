@@ -28,7 +28,6 @@ const checkoutSchema = z.object({
   customerPhone: z.string().trim().max(40).optional(),
   customerId: uuid.optional(),
   clinicVisitId: uuid.optional(),
-  prescriptionId: uuid.optional(),
   discount: money.default("0"),
   amountPaid: money.default("0"),
   paymentMethod: paymentMethod.optional(),
@@ -41,7 +40,6 @@ const checkoutSchema = z.object({
         productId: uuid,
         packageCode: z.string().trim().min(1).max(40),
         packageQuantity: z.number().int().positive(),
-        prescriptionItemId: uuid.optional(),
       }),
     )
     .min(1)

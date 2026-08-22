@@ -53,7 +53,6 @@ model Sale {
   customerPhone        String?    @map("customer_phone") @db.VarChar(40)
   customerId           String?    @map("customer_id") @db.Uuid
   clinicVisitId        String?    @map("clinic_visit_id") @db.Uuid
-  prescriptionId       String?    @map("prescription_id") @db.Uuid
   subtotal             Decimal    @db.Decimal(19, 4)
   discount             Decimal    @default(0) @db.Decimal(19, 4)
   taxTotal             Decimal    @default(0) @map("tax_total") @db.Decimal(19, 4)
@@ -70,16 +69,14 @@ model Sale {
   createdAt            DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt            DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  items    SaleItem[]
-  payments Payment[]
-  debt     Debt?
-  returns  SaleReturn[]
-  customer     Customer?     @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Restrict)
-  clinicVisit ClinicVisit?   @relation(fields: [tenantId, clinicVisitId], references: [tenantId, id], onDelete: Restrict)
-  prescription Prescription? @relation(fields: [tenantId, prescriptionId], references: [tenantId, id], onDelete: Restrict)
+  items       SaleItem[]
+  payments    Payment[]
+  debt        Debt?
+  returns     SaleReturn[]
+  customer    Customer?    @relation(fields: [tenantId, customerId], references: [tenantId, id], onDelete: Restrict)
+  clinicVisit ClinicVisit? @relation(fields: [tenantId, clinicVisitId], references: [tenantId, id], onDelete: Restrict)
 
   @@unique([tenantId, id])
-  @@index([tenantId, prescriptionId, createdAt])
   @@unique([tenantId, invoiceNumber])
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, branchId, createdAt])

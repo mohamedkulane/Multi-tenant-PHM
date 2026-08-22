@@ -3,7 +3,11 @@ import { useEffect, useMemo, useState } from "react";
 import { getData } from "./api/client";
 import { PlatformShell, TenantShell } from "./components/shell";
 import { ErrorState, LoadingState } from "./components/ui";
-import { platformDashboardPath, tenantLandingPath } from "./lib/auth-navigation";
+import {
+  platformDashboardPath,
+  tenantLandingPath,
+  tenantRouteAllowed,
+} from "./lib/auth-navigation";
 import { navigate, usePathname } from "./lib/navigation";
 import { AcceptInvitationPage, PlatformLoginPage, TenantLoginPage } from "./pages/login-pages";
 import {
@@ -34,8 +38,9 @@ import {
   TenantAuditPage,
 } from "./pages/tenant-pages";
 import { CustomersPage, LabPage, SuppliersPage } from "./pages/operations-pages";
-import { ClinicPage } from "./pages/clinic-page";
-import { ClinicalVisitPage } from "./pages/clinical-visit-page";
+import { ClinicalVisitPage } from "./features/clinical/pages/clinical-visit-page";
+import { RoleDashboardPage } from "./features/dashboard/pages/role-dashboard-page";
+import { ReceptionDeskPage } from "./features/reception/pages/reception-desk-page";
 import { ClinicalPrintPage, type ClinicalPrintKind } from "./pages/clinical-print-page";
 import type { PlatformPrincipal, TenantPrincipal, Workspace } from "./types";
 
@@ -148,9 +153,13 @@ function TenantApplication({ pathname }: { pathname: string }) {
   if (pathname === "/login") return <LoadingState label="Opening your workspace" />;
   if (workspace.isLoading) return <LoadingState label="Loading tenant workspace" />;
   if (workspace.error || !workspace.data) return <ErrorState error={workspace.error} />;
+  if (!tenantRouteAllowed(principal.data.role, pathname)) {
+    navigate(tenantLandingPath(principal.data.role), true);
+    return <LoadingState label="Opening your authorized workspace" />;
+  }
   let page: React.ReactNode = <DashboardPage branch={branch} workspace={workspace.data} />;
   const clinicalPrintMatch = pathname.match(
-    /^\/clinic\/visits\/([^/]+)\/print\/(prescription|lab|consultation-receipt|lab-receipt)$/,
+    /^\/clinic\/visits\/([^/]+)\/print\/(lab|consultation-receipt|lab-receipt)$/,
   );
   const clinicalVisitMatch = pathname.match(/^\/clinic\/visits\/([^/]+)$/);
   if (clinicalPrintMatch)
@@ -170,14 +179,27 @@ function TenantApplication({ pathname }: { pathname: string }) {
         principal={principal.data}
       />
     );
-  else if (pathname === "/clinic")
-    page = <ClinicPage branch={branch} workspace={workspace.data} principal={principal.data} />;
+  else if (pathname === "/clinic") {
+    navigate(tenantLandingPath(principal.data.role), true);
+    page = <LoadingState label="Opening your role workspace" />;
+  } else if (
+    [
+      "/doctor/dashboard",
+      "/doctor/queue",
+      "/reception/dashboard",
+      "/lab/dashboard",
+      "/pharmacy/dashboard",
+    ].includes(pathname)
+  )
+    page = <RoleDashboardPage branch={branch} principal={principal.data} />;
+  else if (pathname === "/reception/visits")
+    page = <ReceptionDeskPage branch={branch} workspace={workspace.data} />;
   else if (pathname === "/products")
     page = <ProductsPage principal={principal.data} branch={branch} />;
   else if (pathname === "/customers")
     page = <CustomersPage workspace={workspace.data} principal={principal.data} />;
   else if (pathname === "/suppliers") page = <SuppliersPage principal={principal.data} />;
-  else if (pathname === "/lab")
+  else if (pathname === "/lab" || pathname === "/lab/orders")
     page = <LabPage branch={branch} workspace={workspace.data} principal={principal.data} />;
   else if (pathname === "/inventory")
     page = <InventoryPage branch={branch} workspace={workspace.data} principal={principal.data} />;

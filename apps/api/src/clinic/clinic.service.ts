@@ -56,29 +56,6 @@ export interface ConsultationPaymentInput {
   idempotencyKey: string;
   externalReference?: string | undefined;
 }
-export interface ConsultationInput {
-  chiefComplaint: string;
-  history?: string | undefined;
-  examination?: string | undefined;
-  diagnosis?: string | undefined;
-  doctorNotes?: string | undefined;
-  testIds: string[];
-}
-
-export interface PrescriptionInput {
-  notes?: string | undefined;
-  items: Array<{
-    medicineName: string;
-    strength?: string | undefined;
-    dosage: string;
-    frequency: string;
-    duration: string;
-    route?: string | undefined;
-    quantity?: number | undefined;
-    instructions?: string | undefined;
-  }>;
-}
-
 function clean(value: string | undefined) {
   return value?.trim() || null;
 }
@@ -126,10 +103,6 @@ const clinicVisitInclude = {
     },
     orderBy: { createdAt: "desc" as const },
   },
-  prescriptions: {
-    include: { items: true },
-    orderBy: { createdAt: "desc" as const },
-  },
 } satisfies Prisma.ClinicVisitInclude;
 
 type ClinicVisitRecord = Prisma.ClinicVisitGetPayload<{ include: typeof clinicVisitInclude }>;
@@ -149,7 +122,6 @@ function redactClinicalVisit(principal: AuthenticatedPrincipal, visit: ClinicVis
       ...visit,
       clinicalAssessment: null,
       diagnoses: [],
-      prescriptions: [],
       clinicalPayments: visit.clinicalPayments.filter((payment) => payment.type === "LAB"),
     };
   }
@@ -168,7 +140,6 @@ function redactClinicalVisit(principal: AuthenticatedPrincipal, visit: ClinicVis
     ...visit,
     clinicalAssessment: null,
     diagnoses: [],
-    prescriptions: [],
     labVisits: visit.labVisits.map((labVisit) => ({
       ...labVisit,
       tests: labVisit.tests.map((test) => ({
@@ -209,7 +180,7 @@ export class ClinicService {
                         "LAB_RESULTS_READY",
                         "RESULTS_READY",
                         "DOCTOR_REVIEW",
-                        "PRESCRIPTION_CREATED",
+                        "COMPLETED",
                       ],
                     },
                   },
@@ -222,16 +193,7 @@ export class ClinicService {
                   },
                 }
               : principal.role === "PHARMACIST"
-                ? {
-                    status: {
-                      in: [
-                        "PRESCRIPTION_CREATED",
-                        "PRESCRIPTION_READY",
-                        "AT_PHARMACY",
-                        "COMPLETED",
-                      ],
-                    },
-                  }
+                ? { status: "COMPLETED" }
                 : {}),
         },
         include: clinicVisitInclude,
@@ -278,8 +240,6 @@ export class ClinicService {
       const actorIds = new Set<string>();
       if (visit.assignedDoctorMembershipId) actorIds.add(visit.assignedDoctorMembershipId);
       for (const payment of visit.clinicalPayments) actorIds.add(payment.collectedByMembershipId);
-      for (const prescription of visit.prescriptions)
-        actorIds.add(prescription.prescribedByMembershipId);
       for (const labVisit of visit.labVisits) {
         if (labVisit.requestedByMembershipId) actorIds.add(labVisit.requestedByMembershipId);
         if (labVisit.sampleCollectedById) actorIds.add(labVisit.sampleCollectedById);
@@ -805,124 +765,9 @@ export class ClinicService {
       });
     });
   }
-  async consult(
+  async completeDoctorReview(
     principal: AuthenticatedPrincipal,
     visitId: string,
-    input: ConsultationInput,
-    requestId?: string,
-  ) {
-    return prisma.$transaction(async (transaction) => {
-      await setTransactionContext(transaction, principal);
-      const visit = await transaction.clinicVisit.findUnique({
-        where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
-      });
-      if (!visit || !canAccessBranch(principal, visit.branchId))
-        throw new AppError({
-          statusCode: 404,
-          code: "CLINIC_VISIT_NOT_FOUND",
-          message: "Clinic visit not found",
-        });
-      requireDoctorAccess(principal, visit);
-      if (visit.consultationPaymentStatus !== "PAID")
-        throw new AppError({
-          statusCode: 409,
-          code: "CONSULTATION_PAYMENT_REQUIRED",
-          message: "Consultation fee must be paid before the doctor can see the patient",
-        });
-      const uniqueTestIds = [...new Set(input.testIds)];
-      const tests = uniqueTestIds.length
-        ? await transaction.labTest.findMany({
-            where: { tenantId: principal.tenantId, id: { in: uniqueTestIds }, active: true },
-            include: { category: true },
-          })
-        : [];
-      if (tests.length !== uniqueTestIds.length)
-        throw new AppError({
-          statusCode: 400,
-          code: "INVALID_LAB_TESTS",
-          message: "Choose active laboratory tests",
-        });
-      let labVisitId: string | undefined;
-      let labRequiresPayment = false;
-      if (tests.length) {
-        const subtotal = tests.reduce((sum, test) => sum + parseMoney(test.price.toString()), 0n);
-        labRequiresPayment = subtotal > 0n;
-        const labVisit = await transaction.labVisit.create({
-          data: {
-            tenantId: principal.tenantId,
-            branchId: visit.branchId,
-            patientId: visit.patientId,
-            clinicVisitId: visit.id,
-            visitNumber: `LAB-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`,
-            status: "REGISTERED",
-            clinicalNotes: clean(input.doctorNotes),
-            requestedByMembershipId: principal.membershipId,
-            sampleType:
-              tests
-                .map((test) => test.sampleType)
-                .filter(Boolean)
-                .join(", ") || null,
-            subtotal: formatMoney(subtotal),
-            total: formatMoney(subtotal),
-            registeredByMembershipId: principal.membershipId,
-            tests: {
-              create: tests.map((test) => ({
-                labTestId: test.id,
-                testName: test.name,
-                categoryName: test.category.name,
-                price: test.price,
-                resultType: test.resultType,
-                unit: test.unit,
-                referenceRange: test.referenceRange,
-              })),
-            },
-          },
-        });
-        labVisitId = labVisit.id;
-      }
-      const updated = await transaction.clinicVisit.update({
-        where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
-        data: {
-          chiefComplaint: input.chiefComplaint.trim(),
-          history: clean(input.history),
-          examination: clean(input.examination),
-          diagnosis: clean(input.diagnosis),
-          doctorNotes: clean(input.doctorNotes),
-          assignedDoctorMembershipId: principal.membershipId,
-          consultationCompletedAt: new Date(),
-          status: tests.length
-            ? labRequiresPayment
-              ? "AWAITING_LAB_PAYMENT"
-              : "WAITING_FOR_LAB"
-            : "IN_CONSULTATION",
-        },
-        include: clinicVisitInclude,
-      });
-      await transaction.auditLog.create({
-        data: {
-          tenantId: principal.tenantId,
-          branchId: visit.branchId,
-          actorUserId: principal.userId,
-          actorMembershipId: principal.membershipId,
-          ...(requestId ? { requestId } : {}),
-          action: "DOCTOR_CONSULTATION_RECORDED",
-          entityType: "clinic_visit",
-          entityId: visitId,
-          after: {
-            diagnosis: clean(input.diagnosis),
-            labVisitId: labVisitId ?? null,
-            testCount: tests.length,
-          },
-        },
-      });
-      return updated;
-    });
-  }
-
-  async prescribe(
-    principal: AuthenticatedPrincipal,
-    visitId: string,
-    input: PrescriptionInput,
     requestId?: string,
   ) {
     return prisma.$transaction(async (transaction) => {
@@ -942,11 +787,17 @@ export class ClinicService {
           message: "Clinic visit not found",
         });
       requireDoctorAccess(principal, visit);
+      if (visit.status === "COMPLETED") {
+        return transaction.clinicVisit.findUniqueOrThrow({
+          where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
+          include: clinicVisitInclude,
+        });
+      }
       if (!visit.clinicalAssessment)
         throw new AppError({
           statusCode: 409,
           code: "CONSULTATION_REQUIRED",
-          message: "A clinical examination must be saved before prescribing",
+          message: "Save the clinical assessment and examination before completing the review",
         });
       const pendingResults = visit.labVisits.some((lab) =>
         lab.tests.some((test) => test.resultStatus === "PENDING"),
@@ -955,58 +806,22 @@ export class ClinicService {
         throw new AppError({
           statusCode: 409,
           code: "LAB_RESULTS_PENDING",
-          message: "All requested laboratory results must be completed before prescribing",
+          message: "All requested laboratory results must be completed before doctor review",
         });
-      const prescription = await transaction.prescription.upsert({
-        where: { tenantId_clinicVisitId: { tenantId: principal.tenantId, clinicVisitId: visitId } },
-        create: {
-          tenantId: principal.tenantId,
-          branchId: visit.branchId,
-          clinicVisitId: visitId,
-          prescriptionNumber:
-            "RX-" + new Date().getUTCFullYear() + "-" + randomUUID().slice(0, 8).toUpperCase(),
-          prescribedByMembershipId: principal.membershipId,
-          diagnosisSnapshot:
-            visit.diagnoses
-              .filter((diagnosis) => diagnosis.type === "FINAL")
-              .map((diagnosis) => diagnosis.description)
-              .join("; ") || null,
-          notes: clean(input.notes),
-          items: {
-            create: input.items.map((item) => ({
-              medicineName: item.medicineName.trim(),
-              strength: clean(item.strength),
-              dosage: item.dosage.trim(),
-              frequency: item.frequency.trim(),
-              duration: item.duration.trim(),
-              route: clean(item.route),
-              quantity: item.quantity ?? null,
-              instructions: clean(item.instructions),
-            })),
-          },
-        },
-        update: {
-          prescribedByMembershipId: principal.membershipId,
-          notes: clean(input.notes),
-          items: {
-            deleteMany: {},
-            create: input.items.map((item) => ({
-              medicineName: item.medicineName.trim(),
-              strength: clean(item.strength),
-              dosage: item.dosage.trim(),
-              frequency: item.frequency.trim(),
-              duration: item.duration.trim(),
-              route: clean(item.route),
-              quantity: item.quantity ?? null,
-              instructions: clean(item.instructions),
-            })),
-          },
-        },
-        include: { items: true },
-      });
-      await transaction.clinicVisit.update({
+      if (!visit.diagnoses.some((diagnosis) => diagnosis.type === "FINAL"))
+        throw new AppError({
+          statusCode: 409,
+          code: "FINAL_DIAGNOSIS_REQUIRED",
+          message: "Record at least one final diagnosis before completing the doctor review",
+        });
+      const completed = await transaction.clinicVisit.update({
         where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
-        data: { status: "PRESCRIPTION_CREATED" },
+        data: {
+          status: "COMPLETED",
+          completedAt: new Date(),
+          consultationCompletedAt: visit.consultationCompletedAt ?? new Date(),
+        },
+        include: clinicVisitInclude,
       });
       await transaction.auditLog.create({
         data: {
@@ -1015,51 +830,14 @@ export class ClinicService {
           actorUserId: principal.userId,
           actorMembershipId: principal.membershipId,
           ...(requestId ? { requestId } : {}),
-          action: "PRESCRIPTION_WRITTEN",
-          entityType: "prescription",
-          entityId: prescription.id,
-          after: { clinicVisitId: visitId, itemCount: prescription.items.length },
+          action: "DOCTOR_REVIEW_COMPLETED",
+          entityType: "clinic_visit",
+          entityId: visitId,
+          after: { status: "COMPLETED" },
         },
       });
-      return prescription;
+      return completed;
     });
-  }
-
-  async prescriptions(principal: AuthenticatedPrincipal, branchId: string, search?: string) {
-    requireBranch(principal, branchId);
-    const q = search?.trim();
-    return withTenantContext(prisma, { ...principal, branchId }, (transaction) =>
-      transaction.prescription.findMany({
-        where: {
-          tenantId: principal.tenantId,
-          branchId,
-          ...(q
-            ? {
-                OR: [
-                  { prescriptionNumber: { contains: q, mode: "insensitive" } },
-                  {
-                    clinicVisit: {
-                      patient: { name: { contains: q, mode: "insensitive" } },
-                    },
-                  },
-                  {
-                    clinicVisit: {
-                      patient: { patientNumber: { contains: q, mode: "insensitive" } },
-                    },
-                  },
-                ],
-              }
-            : {}),
-        },
-        include: {
-          items: true,
-          clinicVisit: { include: { patient: true, diagnoses: true } },
-          sales: { orderBy: { createdAt: "desc" }, take: 10 },
-        },
-        orderBy: { createdAt: "desc" },
-        take: 300,
-      }),
-    );
   }
 
   async patientHistory(principal: AuthenticatedPrincipal, patientId: string) {
@@ -1079,10 +857,6 @@ export class ClinicService {
           diagnoses: true,
           labVisits: {
             include: { tests: true },
-            orderBy: { createdAt: "desc" },
-          },
-          prescriptions: {
-            include: { items: true },
             orderBy: { createdAt: "desc" },
           },
         },

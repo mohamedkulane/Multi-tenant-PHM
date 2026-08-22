@@ -4,6 +4,7 @@ import {
   Boxes,
   Building2,
   ChevronDown,
+  ClipboardPlus,
   CreditCard,
   FlaskConical,
   FileClock,
@@ -42,11 +43,26 @@ interface NavigationItem {
 
 const tenantNavigation: NavigationItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["OWNER", "ADMIN"] },
+  { to: "/doctor/dashboard", label: "Doctor dashboard", icon: HeartPulse, roles: ["DOCTOR"] },
   {
-    to: "/clinic",
-    label: "Patient workflow",
+    to: "/reception/dashboard",
+    label: "Reception dashboard",
     icon: HeartPulse,
-    roles: ["OWNER", "ADMIN", "DOCTOR", "RECEPTIONIST", "PHARMACIST", "LAB_TECHNICIAN"],
+    roles: ["RECEPTIONIST"],
+  },
+  { to: "/reception/visits", label: "Patient desk", icon: ClipboardPlus, roles: ["RECEPTIONIST"] },
+  {
+    to: "/lab/dashboard",
+    label: "Lab dashboard",
+    icon: LayoutDashboard,
+    roles: ["LAB_TECHNICIAN"],
+  },
+  { to: "/lab/orders", label: "Laboratory orders", icon: FlaskConical, roles: ["LAB_TECHNICIAN"] },
+  {
+    to: "/pharmacy/dashboard",
+    label: "Pharmacy dashboard",
+    icon: LayoutDashboard,
+    roles: ["PHARMACIST"],
   },
   {
     to: "/products",
@@ -58,7 +74,7 @@ const tenantNavigation: NavigationItem[] = [
     to: "/customers",
     label: "Customers",
     icon: Users,
-    roles: ["OWNER", "ADMIN", "RECEPTIONIST", "PHARMACIST"],
+    roles: ["OWNER", "ADMIN", "PHARMACIST"],
   },
   { to: "/inventory", label: "Inventory", icon: Boxes, roles: ["OWNER", "ADMIN", "PHARMACIST"] },
   { to: "/suppliers", label: "Suppliers", icon: Truck, roles: ["OWNER", "ADMIN", "PHARMACIST"] },
@@ -66,13 +82,13 @@ const tenantNavigation: NavigationItem[] = [
     to: "/lab",
     label: "Laboratory",
     icon: FlaskConical,
-    roles: ["OWNER", "ADMIN", "LAB_TECHNICIAN"],
+    roles: ["OWNER", "ADMIN"],
   },
   {
     to: "/sales",
     label: "Pharmacy sales",
     icon: ShoppingCart,
-    roles: ["OWNER", "ADMIN", "PHARMACIST"],
+    roles: ["OWNER", "ADMIN"],
   },
   { to: "/debts", label: "Debts", icon: WalletCards, roles: ["OWNER", "ADMIN"] },
   { to: "/expenses", label: "Expenses", icon: Receipt, roles: ["OWNER", "ADMIN"] },
@@ -159,7 +175,7 @@ function Sidebar({
             <div>
               <p className="text-lg font-bold tracking-tight">PHMS</p>
               <p className="text-[11px] font-semibold tracking-[0.12em] text-emerald-200 uppercase">
-                {platform ? "Platform control" : "Pharmacy workspace"}
+                {platform ? "Platform control" : "Healthcare workspace"}
               </p>
             </div>
           </Link>
