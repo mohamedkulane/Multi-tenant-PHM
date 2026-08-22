@@ -3,6 +3,7 @@ import { MembershipStatus, PlatformRole, Prisma, TenantRole, TenantStatus } from
 import { hashPassword } from "../auth/password.js";
 import { prisma } from "../database/prisma.js";
 import { AppError } from "../errors/app-error.js";
+import { provisionDefaultLabCatalog } from "../lab/default-lab-catalog.js";
 import type { PlatformPrincipal } from "./platform-auth.types.js";
 
 export interface OnboardTenantInput {
@@ -971,6 +972,7 @@ export class PrismaPlatformAdminService implements PlatformAdminService {
             timezone: input.timezone,
           },
         });
+        await provisionDefaultLabCatalog(transaction, tenantId);
 
         await transaction.$queryRaw(
           Prisma.sql`SELECT set_config('app.user_id', ${principal.userId}, true)`,
