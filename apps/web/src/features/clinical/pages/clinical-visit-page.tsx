@@ -375,7 +375,12 @@ export function ClinicalVisitPage({
                         .map((test) => clinicalText(test["testName"]))
                         .join(", ")}
                     </span>
-                    <StatusBadge value={clinicalText(order["status"])} />
+                    <span className="flex flex-wrap items-center gap-2">
+                      {clinicalText(order["paymentStatus"], "") === "PAID" ? (
+                        <StatusBadge value="PAID" />
+                      ) : null}
+                      <StatusBadge value={clinicalText(order["status"])} />
+                    </span>
                   </div>
                 ))}
               </div>

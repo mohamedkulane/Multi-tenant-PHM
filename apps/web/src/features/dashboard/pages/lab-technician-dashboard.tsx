@@ -1,14 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import {
-  CheckCircle2,
-  Clock3,
-  Droplets,
-  FlaskConical,
-  Microscope,
-  TestTubes,
-  WalletCards,
-} from "lucide-react";
+import { CheckCircle2, Clock3, Droplets, FlaskConical, Microscope, TestTubes } from "lucide-react";
 import { getData } from "../../../api/client";
 import { Card, EmptyState, ErrorState, LoadingState } from "../../../components/ui";
 import { Link } from "../../../lib/navigation";
@@ -26,8 +18,6 @@ import {
 } from "./dashboard-utils";
 
 type QueueTab = "ALL" | "SAMPLE" | "PROGRESS" | "RESULTS" | "COMPLETED";
-const balance = (visit: DashboardRow) =>
-  Math.max(0, Number(visit["total"] ?? 0) - Number(visit["amountPaid"] ?? 0));
 const completed = (visit: DashboardRow) => dashboardText(visit["status"]) === "COMPLETED";
 const collected = (visit: DashboardRow) => dashboardText(visit["sampleStatus"]) === "COLLECTED";
 const pendingTests = (visit: DashboardRow) =>
@@ -49,11 +39,11 @@ export function LabTechnicianDashboard({
   });
   const all = visits.data ?? [];
   const today = all.filter((visit) => isToday(visit["createdAt"]));
-  const pendingPayment = all.filter((visit) => balance(visit) > 0 && !completed(visit));
-  const samples = all.filter(
-    (visit) => !collected(visit) && !completed(visit) && balance(visit) === 0,
-  );
+  const samples = all.filter((visit) => !collected(visit) && !completed(visit));
   const inProgress = all.filter((visit) => collected(visit) && !completed(visit));
+  const urgent = all.filter(
+    (visit) => ["URGENT", "STAT"].includes(dashboardText(visit["priority"])) && !completed(visit),
+  );
   const completedToday = all.filter((visit) => completed(visit) && isToday(visit["completedAt"]));
   const dashboardVisits = useMemo(() => latestDashboardRowPerPatient(all), [all]);
   const filtered = useMemo(
@@ -108,13 +98,6 @@ export function LabTechnicianDashboard({
           tone="blue"
         />
         <Kpi
-          label="Pending payment"
-          value={pendingPayment.length}
-          detail="Requires reception payment"
-          icon={WalletCards}
-          tone="amber"
-        />
-        <Kpi
           label="Samples to collect"
           value={samples.length}
           detail="Ready for collection"
@@ -122,11 +105,18 @@ export function LabTechnicianDashboard({
           tone="violet"
         />
         <Kpi
-          label="In progress"
+          label="Results to enter"
           value={inProgress.length}
-          detail="Under testing"
+          detail="Samples collected"
           icon={Microscope}
           tone="blue"
+        />
+        <Kpi
+          label="Urgent orders"
+          value={urgent.length}
+          detail="Urgent and STAT"
+          icon={Clock3}
+          tone="amber"
         />
         <Kpi
           label="Completed today"
@@ -180,13 +170,11 @@ export function LabTechnicianDashboard({
                       const minutes = elapsedMinutes(visit["createdAt"]);
                       const stage = completed(visit)
                         ? "COMPLETED"
-                        : balance(visit) > 0
-                          ? "AWAITING PAYMENT"
-                          : !collected(visit)
-                            ? "SAMPLE COLLECTION"
-                            : pendingTests(visit)
-                              ? "RESULTS ENTRY"
-                              : dashboardText(visit["status"]);
+                        : !collected(visit)
+                          ? "SAMPLE COLLECTION"
+                          : pendingTests(visit)
+                            ? "RESULTS ENTRY"
+                            : dashboardText(visit["status"]);
                       return (
                         <tr key={dashboardText(visit["id"])}>
                           <td>
@@ -226,16 +214,12 @@ export function LabTechnicianDashboard({
                           </td>
                           <td>
                             <Link
-                              className={
-                                balance(visit) === 0 && !completed(visit)
-                                  ? "btn-primary"
-                                  : "btn-secondary"
-                              }
+                              className={!completed(visit) ? "btn-primary" : "btn-secondary"}
                               to="/lab/orders"
                             >
                               {completed(visit)
                                 ? "View"
-                                : !collected(visit) && balance(visit) === 0
+                                : !collected(visit)
                                   ? "Collect sample"
                                   : collected(visit)
                                     ? "Enter results"
@@ -351,16 +335,13 @@ export function LabTechnicianDashboard({
           </Card>
           <Card title="Alerts & notifications">
             <div className="space-y-3 p-4">
-              {pendingPayment.length ? (
-                <Alert
-                  icon={WalletCards}
-                  text={`${pendingPayment.length} orders require payment`}
-                />
-              ) : null}
               {samples.filter((visit) => elapsedMinutes(visit["createdAt"]) >= 30).length ? (
                 <Alert icon={Clock3} text="Samples have been waiting over 30 minutes" />
               ) : null}
-              {!pendingPayment.length && !samples.length ? (
+              {urgent.length ? (
+                <Alert icon={Clock3} text={`${urgent.length} urgent orders`} />
+              ) : null}
+              {!urgent.length && !samples.length ? (
                 <p className="text-sm text-slate-500">No laboratory alerts.</p>
               ) : null}
             </div>
@@ -411,11 +392,9 @@ function LabStageChip({ value }: { value: string }) {
   const tone =
     value === "COMPLETED"
       ? "bg-emerald-50 text-emerald-700"
-      : value === "AWAITING PAYMENT"
-        ? "bg-amber-50 text-amber-700"
-        : value === "RESULTS ENTRY"
-          ? "bg-violet-50 text-violet-700"
-          : "bg-blue-50 text-blue-700";
+      : value === "RESULTS ENTRY"
+        ? "bg-violet-50 text-violet-700"
+        : "bg-blue-50 text-blue-700";
   return (
     <span className={`inline-flex rounded-lg px-2.5 py-1 text-[11px] font-extrabold ${tone}`}>
       {value}

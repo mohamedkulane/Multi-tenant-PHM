@@ -2,6 +2,7 @@ import { DiagnosisType, LabOrderPriority, PaymentMethod } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import type { AuthService } from "../auth/auth.types.js";
+import { presentClinicalData } from "../clinic/clinical-data-presenter.js";
 import { clinicService, type ClinicService } from "../clinic/clinic.service.js";
 import { requireAuthentication } from "../middleware/authentication.js";
 import { requirePermission } from "../middleware/authorization.js";
@@ -61,7 +62,10 @@ export function createClinicRouter(
 
   router.get("/visits", requirePermission("clinic.read"), async (request, response) =>
     response.json({
-      data: await service.visits(request.auth!, uuid.parse(request.query.branchId)),
+      data: presentClinicalData(
+        request.auth!,
+        await service.visits(request.auth!, uuid.parse(request.query.branchId)),
+      ),
     }),
   );
   router.get("/doctors", requirePermission("clinic.assign"), async (request, response) =>
@@ -70,14 +74,22 @@ export function createClinicRouter(
     }),
   );
   router.get("/visits/:visitId", requirePermission("clinic.read"), async (request, response) =>
-    response.json({ data: await service.visit(request.auth!, uuid.parse(request.params.visitId)) }),
+    response.json({
+      data: presentClinicalData(
+        request.auth!,
+        await service.visit(request.auth!, uuid.parse(request.params.visitId)),
+      ),
+    }),
   );
   router.get(
     "/patients/:patientId/history",
     requirePermission("clinic.history"),
     async (request, response) =>
       response.json({
-        data: await service.patientHistory(request.auth!, uuid.parse(request.params.patientId)),
+        data: presentClinicalData(
+          request.auth!,
+          await service.patientHistory(request.auth!, uuid.parse(request.params.patientId)),
+        ),
       }),
   );
   router.post("/visits", requirePermission("clinic.register"), async (request, response) => {
@@ -123,11 +135,14 @@ export function createClinicRouter(
     requirePermission("clinic.examine"),
     async (request, response) =>
       response.json({
-        data: await service.saveAssessment(
+        data: presentClinicalData(
           request.auth!,
-          uuid.parse(request.params.visitId),
-          assessmentSchema.parse(request.body),
-          response.locals.requestId as string | undefined,
+          await service.saveAssessment(
+            request.auth!,
+            uuid.parse(request.params.visitId),
+            assessmentSchema.parse(request.body),
+            response.locals.requestId as string | undefined,
+          ),
         ),
       }),
   );
@@ -143,11 +158,14 @@ export function createClinicRouter(
         })
         .parse(request.body);
       response.status(201).json({
-        data: await service.requestLabTests(
+        data: presentClinicalData(
           request.auth!,
-          uuid.parse(request.params.visitId),
-          body,
-          response.locals.requestId as string | undefined,
+          await service.requestLabTests(
+            request.auth!,
+            uuid.parse(request.params.visitId),
+            body,
+            response.locals.requestId as string | undefined,
+          ),
         ),
       });
     },
@@ -171,12 +189,15 @@ export function createClinicRouter(
         })
         .parse(request.body);
       response.json({
-        data: await service.recordDiagnoses(
+        data: presentClinicalData(
           request.auth!,
-          uuid.parse(request.params.visitId),
-          type,
-          body.diagnoses,
-          response.locals.requestId as string | undefined,
+          await service.recordDiagnoses(
+            request.auth!,
+            uuid.parse(request.params.visitId),
+            type,
+            body.diagnoses,
+            response.locals.requestId as string | undefined,
+          ),
         ),
       });
     },
@@ -186,10 +207,13 @@ export function createClinicRouter(
     requirePermission("clinic.complete"),
     async (request, response) =>
       response.json({
-        data: await service.completeDoctorReview(
+        data: presentClinicalData(
           request.auth!,
-          uuid.parse(request.params.visitId),
-          response.locals.requestId as string | undefined,
+          await service.completeDoctorReview(
+            request.auth!,
+            uuid.parse(request.params.visitId),
+            response.locals.requestId as string | undefined,
+          ),
         ),
       }),
   );
@@ -198,18 +222,28 @@ export function createClinicRouter(
     requirePermission("lab.sample"),
     async (request, response) =>
       response.json({
-        data: await service.collectSample(
+        data: presentClinicalData(
           request.auth!,
-          uuid.parse(request.params.visitId),
-          uuid.parse(request.params.labVisitId),
-          z
-            .object({
-              sampleType: optionalText(80),
-              sampleId: optionalText(80),
-              sampleNotes: optionalText(1000),
-            })
-            .parse(request.body ?? {}),
-          response.locals.requestId as string | undefined,
+          await service.collectSample(
+            request.auth!,
+            uuid.parse(request.params.visitId),
+            uuid.parse(request.params.labVisitId),
+            z
+              .object({
+                samples: z
+                  .array(
+                    z.object({
+                      visitTestId: uuid,
+                      sampleId: z.string().trim().min(1).max(80),
+                      sampleNotes: optionalText(1000),
+                    }),
+                  )
+                  .min(1)
+                  .max(100),
+              })
+              .parse(request.body ?? {}),
+            response.locals.requestId as string | undefined,
+          ),
         ),
       }),
   );

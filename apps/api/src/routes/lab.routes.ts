@@ -2,6 +2,7 @@ import { LabInterpretation, LabResultStatus, LabResultType, PaymentMethod } from
 import { Router } from "express";
 import { z } from "zod";
 import type { AuthService } from "../auth/auth.types.js";
+import { presentClinicalData } from "../clinic/clinical-data-presenter.js";
 import { labService, type LabService } from "../lab/lab.service.js";
 import { requireAuthentication } from "../middleware/authentication.js";
 import { requirePermission } from "../middleware/authorization.js";
@@ -14,7 +15,13 @@ const money = z
 const optionalText = (max: number) => z.string().trim().max(max).optional();
 const labTestSchema = z.object({
   categoryId: uuid,
-  code: z.string().trim().min(2).max(40).regex(/^[A-Za-z0-9._-]+$/).optional(),
+  code: z
+    .string()
+    .trim()
+    .min(2)
+    .max(40)
+    .regex(/^[A-Za-z0-9._-]+$/)
+    .optional(),
   name: z.string().trim().min(2).max(180),
   description: optionalText(1000),
   price: money,
@@ -39,7 +46,7 @@ export function createLabRouter(authentication: AuthService, service: LabService
   const router = Router();
   router.use(requireAuthentication(authentication));
   router.get("/categories", requirePermission("lab.read"), async (req, res) =>
-    res.json({ data: await service.categories(req.auth!) }),
+    res.json({ data: presentClinicalData(req.auth!, await service.categories(req.auth!)) }),
   );
   router.post("/categories", requirePermission("lab.manage"), async (req, res) =>
     res.status(201).json({
@@ -58,12 +65,12 @@ export function createLabRouter(authentication: AuthService, service: LabService
       ),
     }),
   );
+  router.delete("/categories/:categoryId", requirePermission("lab.manage"), async (req, res) =>
+    res.json({ data: await service.archiveCategory(req.auth!, uuid.parse(req.params.categoryId)) }),
+  );
   router.post("/tests", requirePermission("lab.manage"), async (req, res) =>
     res.status(201).json({
-      data: await service.createTest(
-        req.auth!,
-        labTestSchema.parse(req.body),
-      ),
+      data: await service.createTest(req.auth!, labTestSchema.parse(req.body)),
     }),
   );
   router.put("/tests/:testId", requirePermission("lab.manage"), async (req, res) =>
@@ -74,6 +81,9 @@ export function createLabRouter(authentication: AuthService, service: LabService
         labTestSchema.extend({ active: z.boolean() }).parse(req.body),
       ),
     }),
+  );
+  router.delete("/tests/:testId", requirePermission("lab.manage"), async (req, res) =>
+    res.json({ data: await service.archiveTest(req.auth!, uuid.parse(req.params.testId)) }),
   );
   router.get("/patients", requirePermission("patient.read"), async (req, res) =>
     res.json({
@@ -106,10 +116,20 @@ export function createLabRouter(authentication: AuthService, service: LabService
     }),
   );
   router.get("/visits", requirePermission("lab.read"), async (req, res) =>
-    res.json({ data: await service.visits(req.auth!, uuid.parse(req.query.branchId)) }),
+    res.json({
+      data: presentClinicalData(
+        req.auth!,
+        await service.visits(req.auth!, uuid.parse(req.query.branchId)),
+      ),
+    }),
   );
   router.get("/visits/:visitId", requirePermission("lab.read"), async (req, res) =>
-    res.json({ data: await service.visit(req.auth!, uuid.parse(req.params.visitId)) }),
+    res.json({
+      data: presentClinicalData(
+        req.auth!,
+        await service.visit(req.auth!, uuid.parse(req.params.visitId)),
+      ),
+    }),
   );
   router.post("/visits", requirePermission("lab.manage"), async (req, res) =>
     res.status(201).json({
@@ -154,20 +174,23 @@ export function createLabRouter(authentication: AuthService, service: LabService
     requirePermission("lab.result"),
     async (req, res) =>
       res.json({
-        data: await service.markResult(
+        data: presentClinicalData(
           req.auth!,
-          uuid.parse(req.params.visitId),
-          uuid.parse(req.params.visitTestId),
-          z
-            .object({
-              resultStatus: z.nativeEnum(LabResultStatus),
-              resultValue: optionalText(1000),
-              numericValue: z.coerce.number().finite().optional(),
-              interpretation: z.nativeEnum(LabInterpretation).optional(),
-              resultData: z.record(z.string(), z.unknown()).optional(),
-              resultNote: optionalText(1000),
-            })
-            .parse(req.body),
+          await service.markResult(
+            req.auth!,
+            uuid.parse(req.params.visitId),
+            uuid.parse(req.params.visitTestId),
+            z
+              .object({
+                resultStatus: z.nativeEnum(LabResultStatus),
+                resultValue: optionalText(1000),
+                numericValue: z.coerce.number().finite().optional(),
+                interpretation: z.nativeEnum(LabInterpretation).optional(),
+                resultData: z.record(z.string(), z.unknown()).optional(),
+                resultNote: optionalText(1000),
+              })
+              .parse(req.body),
+          ),
         ),
       }),
   );

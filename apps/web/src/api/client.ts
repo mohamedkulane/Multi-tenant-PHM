@@ -10,7 +10,11 @@ export async function getData<T>(url: string) {
   return (await http.get<ApiEnvelope<T>>(url)).data.data;
 }
 
-export async function sendData<T>(method: "post" | "put" | "patch", url: string, body?: unknown) {
+export async function sendData<T>(
+  method: "post" | "put" | "patch" | "delete",
+  url: string,
+  body?: unknown,
+) {
   return (await http.request<ApiEnvelope<T>>({ method, url, data: body })).data.data;
 }
 

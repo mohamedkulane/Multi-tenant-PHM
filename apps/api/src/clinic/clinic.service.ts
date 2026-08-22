@@ -659,6 +659,7 @@ export class ClinicService {
               testName: test.name,
               categoryName: test.category.name,
               price: test.price,
+              sampleType: test.sampleType,
               resultType: test.resultType,
               unit: test.unit,
               referenceRange: test.referenceRange,
@@ -871,16 +872,19 @@ export class ClinicService {
     visitId: string,
     labVisitId: string,
     input: {
-      sampleType?: string | undefined;
-      sampleId?: string | undefined;
-      sampleNotes?: string | undefined;
-    } = {},
+      samples: Array<{
+        visitTestId: string;
+        sampleId: string;
+        sampleNotes?: string | undefined;
+      }>;
+    },
     requestId?: string,
   ) {
     return prisma.$transaction(async (transaction) => {
       await setTransactionContext(transaction, principal);
       const lab = await transaction.labVisit.findUnique({
         where: { tenantId_id: { tenantId: principal.tenantId, id: labVisitId } },
+        include: { tests: true },
       });
       if (!lab || lab.clinicVisitId !== visitId || !canAccessBranch(principal, lab.branchId))
         throw new AppError({
@@ -894,15 +898,38 @@ export class ClinicService {
           code: "LAB_PAYMENT_REQUIRED",
           message: "Lab fee must be paid in full before collecting the sample",
         });
+      const uniqueSamples = new Map(input.samples.map((sample) => [sample.visitTestId, sample]));
+      if (
+        uniqueSamples.size !== lab.tests.length ||
+        lab.tests.some((test) => !uniqueSamples.has(test.id))
+      )
+        throw new AppError({
+          statusCode: 400,
+          code: "ALL_LAB_SAMPLES_REQUIRED",
+          message: "Record a sample or tube ID for every ordered laboratory test",
+        });
+      await Promise.all(
+        lab.tests.map((test) => {
+          const sample = uniqueSamples.get(test.id)!;
+          return transaction.labVisitTest.update({
+            where: { tenantId_id: { tenantId: principal.tenantId, id: test.id } },
+            data: {
+              sampleId: sample.sampleId.trim(),
+              sampleNotes: clean(sample.sampleNotes),
+              sampleCollectedAt: new Date(),
+              sampleCollectedById: principal.membershipId,
+            },
+          });
+        }),
+      );
       await transaction.labVisit.update({
         where: { tenantId_id: { tenantId: principal.tenantId, id: labVisitId } },
         data: {
           sampleStatus: "COLLECTED",
           sampleCollectedAt: new Date(),
           sampleCollectedById: principal.membershipId,
-          sampleType: clean(input.sampleType) ?? lab.sampleType,
-          sampleId: clean(input.sampleId),
-          sampleNotes: clean(input.sampleNotes),
+          sampleId: null,
+          sampleNotes: null,
           status: "RESULTS_PENDING",
         },
       });
@@ -921,7 +948,7 @@ export class ClinicService {
           action: "LAB_SAMPLE_COLLECTED",
           entityType: "lab_visit",
           entityId: labVisitId,
-          metadata: { sampleType: clean(input.sampleType) ?? lab.sampleType },
+          metadata: { sampleCount: uniqueSamples.size },
         },
       });
       return updated;

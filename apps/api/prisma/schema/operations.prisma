@@ -270,6 +270,11 @@ model LabVisitTest {
   numericValue         Decimal?           @map("numeric_value") @db.Decimal(19, 6)
   unit                 String?            @db.VarChar(80)
   referenceRange       String?            @map("reference_range") @db.VarChar(180)
+  sampleType           String?            @map("sample_type") @db.VarChar(80)
+  sampleId             String?            @map("sample_id") @db.VarChar(80)
+  sampleNotes          String?            @map("sample_notes") @db.VarChar(1000)
+  sampleCollectedAt    DateTime?          @map("sample_collected_at") @db.Timestamptz(3)
+  sampleCollectedById  String?            @map("sample_collected_by_membership_id") @db.Uuid
   interpretation       LabInterpretation?
   resultData           Json?              @map("result_data")
   resultNote           String?            @map("result_note") @db.VarChar(1000)

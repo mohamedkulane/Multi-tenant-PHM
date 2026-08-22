@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import type { LabInterpretation, LabResultStatus, LabResultType, PaymentMethod, Prisma } from "@prisma/client";
+import type {
+  LabInterpretation,
+  LabResultStatus,
+  LabResultType,
+  PaymentMethod,
+  Prisma,
+} from "@prisma/client";
 import type { AuthenticatedPrincipal } from "../auth/auth.types.js";
 import { prisma } from "../database/prisma.js";
 import { setTransactionContext, withTenantContext } from "../database/tenant-context.js";
@@ -117,6 +123,28 @@ export class LabService {
     });
   }
 
+  async archiveCategory(principal: AuthenticatedPrincipal, categoryId: string) {
+    return withTenantContext(prisma, principal, async (transaction) => {
+      const category = await transaction.labCategory.findUnique({
+        where: { tenantId_id: { tenantId: principal.tenantId, id: categoryId } },
+      });
+      if (!category)
+        throw new AppError({
+          statusCode: 404,
+          code: "LAB_CATEGORY_NOT_FOUND",
+          message: "Lab category not found",
+        });
+      await transaction.labTest.updateMany({
+        where: { tenantId: principal.tenantId, categoryId },
+        data: { active: false },
+      });
+      return transaction.labCategory.update({
+        where: { tenantId_id: { tenantId: principal.tenantId, id: categoryId } },
+        data: { active: false },
+      });
+    });
+  }
+
   async createTest(principal: AuthenticatedPrincipal, input: LabTestInput) {
     return withTenantContext(prisma, principal, async (transaction) => {
       const category = await transaction.labCategory.findUnique({
@@ -195,6 +223,24 @@ export class LabService {
     });
   }
 
+  async archiveTest(principal: AuthenticatedPrincipal, testId: string) {
+    return withTenantContext(prisma, principal, async (transaction) => {
+      const found = await transaction.labTest.findUnique({
+        where: { tenantId_id: { tenantId: principal.tenantId, id: testId } },
+      });
+      if (!found)
+        throw new AppError({
+          statusCode: 404,
+          code: "LAB_TEST_NOT_FOUND",
+          message: "Lab test not found",
+        });
+      return transaction.labTest.update({
+        where: { tenantId_id: { tenantId: principal.tenantId, id: testId } },
+        data: { active: false },
+      });
+    });
+  }
+
   async patients(principal: AuthenticatedPrincipal, search?: string) {
     return withTenantContext(prisma, principal, (transaction) => {
       const q = search?.trim();
@@ -246,14 +292,17 @@ export class LabService {
 
   async visits(principal: AuthenticatedPrincipal, branchId: string) {
     requireBranch(principal, branchId);
-    return withTenantContext(prisma, { ...principal, branchId }, (transaction) =>
-      transaction.labVisit.findMany({
+    return withTenantContext(prisma, { ...principal, branchId }, async (transaction) => {
+      const visits = await transaction.labVisit.findMany({
         where: { tenantId: principal.tenantId, branchId },
         include: visitInclude,
         orderBy: { createdAt: "desc" },
         take: 300,
-      }),
-    );
+      });
+      return principal.role === "LAB_TECHNICIAN"
+        ? visits.filter((visit) => !visit.amountPaid.lessThan(visit.total))
+        : visits;
+    });
   }
 
   async visit(principal: AuthenticatedPrincipal, visitId: string) {
@@ -263,6 +312,12 @@ export class LabService {
         include: visitInclude,
       });
       if (!visit || !canAccessBranch(principal, visit.branchId))
+        throw new AppError({
+          statusCode: 404,
+          code: "LAB_VISIT_NOT_FOUND",
+          message: "Lab visit not found",
+        });
+      if (principal.role === "LAB_TECHNICIAN" && visit.amountPaid.lessThan(visit.total))
         throw new AppError({
           statusCode: 404,
           code: "LAB_VISIT_NOT_FOUND",
@@ -349,10 +404,11 @@ export class LabService {
               labTestId: test.id,
               testName: test.name,
               categoryName: test.category.name,
-                price: test.price,
-                resultType: test.resultType,
-                unit: test.unit,
-                referenceRange: test.referenceRange,
+              price: test.price,
+              sampleType: test.sampleType,
+              resultType: test.resultType,
+              unit: test.unit,
+              referenceRange: test.referenceRange,
             })),
           },
         },
@@ -560,7 +616,7 @@ export class LabService {
           code: "LAB_PAYMENT_REQUIRED",
           message: "Lab fee must be paid in full before results can be entered",
         });
-      if (visit.clinicVisitId && visit.sampleStatus !== "COLLECTED")
+      if (visit.clinicVisitId && !target.sampleCollectedAt)
         throw new AppError({
           statusCode: 409,
           code: "LAB_SAMPLE_REQUIRED",
@@ -578,10 +634,7 @@ export class LabService {
           code: "NUMERIC_RESULT_REQUIRED",
           message: "Enter a numeric result value",
         });
-      if (
-        ["TEXT", "SELECT"].includes(target.resultType) &&
-        !input.resultValue?.trim()
-      )
+      if (["TEXT", "SELECT"].includes(target.resultType) && !input.resultValue?.trim())
         throw new AppError({
           statusCode: 400,
           code: "TEXT_RESULT_REQUIRED",

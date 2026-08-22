@@ -211,14 +211,30 @@ describe("clinic workflow routes", () => {
         "/api/v1/clinic/visits/10000000-0000-4000-8000-000000000006/lab/30000000-0000-4000-8000-000000000001/sample",
       )
       .set("Cookie", "phms_session=test")
-      .send({ sampleType: "Blood", sampleId: "SMP-2026-001", sampleNotes: "EDTA tube" });
+      .send({
+        samples: [
+          {
+            visitTestId: "40000000-0000-4000-8000-000000000001",
+            sampleId: "SMP-2026-001",
+            sampleNotes: "EDTA tube",
+          },
+        ],
+      });
 
     expect(response.status).toBe(200);
     expect(collectSample).toHaveBeenCalledWith(
       principal,
       "10000000-0000-4000-8000-000000000006",
       "30000000-0000-4000-8000-000000000001",
-      { sampleType: "Blood", sampleId: "SMP-2026-001", sampleNotes: "EDTA tube" },
+      {
+        samples: [
+          {
+            visitTestId: "40000000-0000-4000-8000-000000000001",
+            sampleId: "SMP-2026-001",
+            sampleNotes: "EDTA tube",
+          },
+        ],
+      },
       expect.any(String),
     );
   });

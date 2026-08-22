@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardPlus, UserPlus, WalletCards } from "lucide-react";
+import { ClipboardPlus, Printer, UserPlus, WalletCards } from "lucide-react";
 import { useState } from "react";
 import { errorMessage, getData, sendData } from "../../../api/client";
 import { showToast } from "../../../components/toast";
@@ -16,6 +16,7 @@ import {
   money,
 } from "../../../components/ui";
 import type { Branch, Workspace } from "../../../types";
+import { Link } from "../../../lib/navigation";
 
 type Row = Record<string, unknown>;
 const text = (value: unknown) =>
@@ -212,6 +213,20 @@ export function ReceptionDeskPage({
                           >
                             <WalletCards size={16} /> Receive lab fee
                           </button>
+                        ) : lab &&
+                          [
+                            "WAITING_FOR_SAMPLE",
+                            "LAB_IN_PROGRESS",
+                            "LAB_RESULTS_READY",
+                            "DOCTOR_REVIEW",
+                            "COMPLETED",
+                          ].includes(status) ? (
+                          <Link
+                            className="btn-secondary"
+                            to={`/clinic/visits/${text(visit["id"])}/print/lab-receipt`}
+                          >
+                            <Printer size={16} /> Print lab receipt
+                          </Link>
                         ) : null}
                       </td>
                     </tr>

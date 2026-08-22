@@ -123,7 +123,9 @@ function Receipt({
   workspace: Workspace;
   type: "CONSULTATION" | "LAB";
 }) {
-  const payments = rows(visit["payments"]).filter((payment) => text(payment["type"]) === type);
+  const payments = rows(visit["clinicalPayments"]).filter(
+    (payment) => text(payment["type"]) === type,
+  );
   const lab = rows(visit["labVisits"])[0];
   const amount = type === "CONSULTATION" ? visit["consultationFee"] : lab?.["total"];
   return (
@@ -131,6 +133,10 @@ function Receipt({
       <Header workspace={workspace} title={`${type} RECEIPT`} />
       <Patient visit={visit} />
       <section className="clinical-print-meta">
+        <div>
+          <span>Receipt #</span>
+          <strong>{text(payments[0]?.["receiptNumber"]) || "—"}</strong>
+        </div>
         <div>
           <span>Amount</span>
           <strong>{money(amount, workspace.tenant.currencyCode)}</strong>

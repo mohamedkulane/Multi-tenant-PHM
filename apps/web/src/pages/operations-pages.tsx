@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Printer, Search } from "lucide-react";
+import { Pencil, Plus, Printer, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { errorMessage, getData, sendData } from "../api/client";
 import { showToast } from "../components/toast";
@@ -773,6 +773,7 @@ export function LabPage({
     notes: "",
   });
   const [categoryName, setCategoryName] = useState("");
+  const [editingTest, setEditingTest] = useState<Row | null>(null);
   const [testForm, setTestForm] = useState({
     categoryId: "",
     code: "",
@@ -785,6 +786,7 @@ export function LabPage({
     referenceRange: "",
     resultOptions: "",
     panelComponents: "",
+    active: true,
   });
   const [visitForm, setVisitForm] = useState({
     patientId: "",
@@ -801,6 +803,9 @@ export function LabPage({
     externalReference: "",
     notes: "",
   });
+  const [sampleForms, setSampleForms] = useState<
+    Record<string, { sampleId: string; sampleNotes: string }>
+  >({});
   const [resultForms, setResultForms] = useState<
     Record<
       string,
@@ -817,6 +822,8 @@ export function LabPage({
   const canManage = ["OWNER", "ADMIN"].includes(principal.role);
   const canResult = ["OWNER", "ADMIN", "LAB_TECHNICIAN"].includes(principal.role);
   const canCollectPayment = ["OWNER", "ADMIN", "RECEPTIONIST"].includes(principal.role);
+  const canCollectSample = ["OWNER", "ADMIN", "LAB_TECHNICIAN"].includes(principal.role);
+  const clinicalOnly = ["DOCTOR", "LAB_TECHNICIAN"].includes(principal.role);
   useEffect(() => setVisitStage(initialVisitStage), [initialVisitStage]);
   const categories = useQuery({
     queryKey: ["lab-categories"],
@@ -837,6 +844,17 @@ export function LabPage({
         rows(c["tests"])
           .filter((t) => t["active"] !== false)
           .map((t) => ({ ...t, categoryName: c["name"] })),
+      ) ?? [],
+    [categories.data],
+  );
+  const catalogTests = useMemo<Row[]>(
+    () =>
+      categories.data?.flatMap((category) =>
+        rows(category["tests"]).map((test) => ({
+          ...test,
+          categoryId: category["id"],
+          categoryName: category["name"],
+        })),
       ) ?? [],
     [categories.data],
   );
@@ -894,30 +912,43 @@ export function LabPage({
   });
   const createTest = useMutation({
     mutationFn: () =>
-      sendData("post", "/lab/tests", {
-        ...testForm,
-        code: testForm.code || undefined,
-        description: testForm.description || undefined,
-        sampleType: testForm.sampleType || undefined,
-        unit: testForm.unit || undefined,
-        referenceRange: testForm.referenceRange || undefined,
-        resultOptions:
-          testForm.resultType === "SELECT"
-            ? testForm.resultOptions.split(",").map((item) => item.trim()).filter(Boolean)
-            : undefined,
-        panelComponents:
-          testForm.resultType === "PANEL"
-            ? testForm.panelComponents
-                .split("\n")
-                .map((line) => {
-                  const [name, unit, referenceRange] = line.split("|").map((item) => item.trim());
-                  return { name, unit: unit || undefined, referenceRange: referenceRange || undefined };
-                })
-                .filter((item) => item.name)
-            : undefined,
-      }),
+      sendData(
+        editingTest ? "put" : "post",
+        editingTest ? `/lab/tests/${text(editingTest["id"])}` : "/lab/tests",
+        {
+          ...testForm,
+          code: testForm.code || undefined,
+          description: testForm.description || undefined,
+          sampleType: testForm.sampleType || undefined,
+          unit: testForm.unit || undefined,
+          referenceRange: testForm.referenceRange || undefined,
+          resultOptions:
+            testForm.resultType === "SELECT"
+              ? testForm.resultOptions
+                  .split(",")
+                  .map((item) => item.trim())
+                  .filter(Boolean)
+              : undefined,
+          panelComponents:
+            testForm.resultType === "PANEL"
+              ? testForm.panelComponents
+                  .split("\n")
+                  .map((line) => {
+                    const [name, unit, referenceRange] = line.split("|").map((item) => item.trim());
+                    return {
+                      name,
+                      unit: unit || undefined,
+                      referenceRange: referenceRange || undefined,
+                    };
+                  })
+                  .filter((item) => item.name)
+              : undefined,
+          ...(editingTest ? { active: testForm.active } : {}),
+        },
+      ),
     onSuccess: async () => {
       setTestOpen(false);
+      setEditingTest(null);
       setTestForm({
         categoryId: "",
         code: "",
@@ -930,7 +961,15 @@ export function LabPage({
         referenceRange: "",
         resultOptions: "",
         panelComponents: "",
+        active: true,
       });
+      await refresh();
+    },
+  });
+  const archiveTest = useMutation({
+    mutationFn: (testId: string) => sendData("delete", `/lab/tests/${testId}`),
+    onSuccess: async () => {
+      showToast({ title: "Lab test deactivated" });
       await refresh();
     },
   });
@@ -995,25 +1034,53 @@ export function LabPage({
         resultData: object(test?.["resultData"]) as Record<string, string>,
         resultNote: text(test?.["resultNote"]),
       };
-      return sendData(
-        "patch",
-        "/lab/visits/" + visitId + "/tests/" + testId + "/result",
-        {
-          resultStatus:
-            resultType === "POSITIVE_NEGATIVE" ? form.resultStatus : "COMPLETED",
-          resultValue: form.resultValue || undefined,
-          numericValue: form.numericValue ? Number(form.numericValue) : undefined,
-          interpretation: form.interpretation || undefined,
-          resultData:
-            resultType === "PANEL" && Object.keys(form.resultData).length
-              ? form.resultData
-              : undefined,
-          resultNote: form.resultNote || undefined,
-        },
-      );
+      return sendData("patch", "/lab/visits/" + visitId + "/tests/" + testId + "/result", {
+        resultStatus: resultType === "POSITIVE_NEGATIVE" ? form.resultStatus : "COMPLETED",
+        resultValue: form.resultValue || undefined,
+        numericValue: form.numericValue ? Number(form.numericValue) : undefined,
+        interpretation: form.interpretation || undefined,
+        resultData:
+          resultType === "PANEL" && Object.keys(form.resultData).length
+            ? form.resultData
+            : undefined,
+        resultNote: form.resultNote || undefined,
+      });
     },
     onSuccess: async (data) => {
       setSelectedVisit(data as Row);
+      await refresh();
+    },
+  });
+  const collectSample = useMutation({
+    mutationFn: () =>
+      sendData<Row>(
+        "post",
+        `/clinic/visits/${text(selectedVisit?.["clinicVisitId"])}/lab/${text(selectedVisit?.["id"])}/sample`,
+        {
+          samples: rows(selectedVisit?.["tests"]).map((test) => {
+            const testId = text(test["id"]);
+            const form = sampleForms[testId] ?? { sampleId: "", sampleNotes: "" };
+            return {
+              visitTestId: testId,
+              sampleId: form.sampleId,
+              sampleNotes: form.sampleNotes || undefined,
+            };
+          }),
+        },
+      ),
+    onSuccess: async () => {
+      setSelectedVisit((visit) =>
+        visit
+          ? {
+              ...visit,
+              sampleStatus: "COLLECTED",
+              sampleCollectedAt: new Date().toISOString(),
+              status: "RESULTS_PENDING",
+            }
+          : visit,
+      );
+      setSampleForms({});
+      showToast({ title: "Sample collected", message: "Order-ka wuxuu u gudbay Results entry." });
       await refresh();
     },
   });
@@ -1029,6 +1096,10 @@ export function LabPage({
   const selectedTestDiscount = Math.max(0, Number(visitForm.discount || 0));
   const selectedTestTotal = Math.max(0, selectedTestSubtotal - selectedTestDiscount);
   const visitDiscountValid = selectedTestDiscount <= selectedTestSubtotal;
+  const selectedSampleCollected = text(selectedVisit?.["sampleStatus"]) === "COLLECTED";
+  const showSamplePanel =
+    !selectedSampleCollected && visitStage !== "RESULTS" && visitStage !== "COMPLETED";
+  const showResultsPanel = selectedSampleCollected && visitStage !== "SAMPLE";
   const normalizedVisitSearch = visitSearch.trim().toLowerCase();
   const filteredVisits = (visits.data ?? []).filter((visit) => {
     const isCompleted = text(visit["status"]) === "COMPLETED";
@@ -1055,7 +1126,11 @@ export function LabPage({
       <PageHeader
         eyebrow="Clinical services"
         title="Laboratory"
-        description="Register patients, choose priced tests, apply discounts, record results, receive payments, and print a professional report."
+        description={
+          clinicalOnly
+            ? "Collect patient samples, enter results, and complete laboratory orders."
+            : "Register patients, manage laboratory orders, payments, and completed reports."
+        }
         actions={
           <div className="flex gap-2">
             {canManage ? (
@@ -1136,29 +1211,54 @@ export function LabPage({
                 },
                 { label: "Patient", render: (r) => text((r["patient"] as Row)?.["name"]) },
                 { label: "Tests", render: (r) => rows(r["tests"]).length },
-                { label: "Total", render: (r) => money(r["total"], workspace.tenant.currencyCode) },
+                ...(clinicalOnly
+                  ? [
+                      {
+                        label: "Payment",
+                        render: (r: Row) => <StatusBadge value={text(r["paymentStatus"])} />,
+                      },
+                    ]
+                  : [
+                      {
+                        label: "Total",
+                        render: (r: Row) => money(r["total"], workspace.tenant.currencyCode),
+                      },
+                      {
+                        label: "Paid",
+                        render: (r: Row) => money(r["amountPaid"], workspace.tenant.currencyCode),
+                      },
+                      {
+                        label: "Balance",
+                        render: (r: Row) => (
+                          <strong
+                            className={
+                              Number(r["total"]) - Number(r["amountPaid"]) > 0
+                                ? "text-rose-700"
+                                : "text-emerald-700"
+                            }
+                          >
+                            {money(
+                              Math.max(0, Number(r["total"]) - Number(r["amountPaid"])),
+                              workspace.tenant.currencyCode,
+                            )}
+                          </strong>
+                        ),
+                      },
+                    ]),
                 {
-                  label: "Paid",
-                  render: (r) => money(r["amountPaid"], workspace.tenant.currencyCode),
-                },
-                {
-                  label: "Balance",
+                  label: "Status",
                   render: (r) => (
-                    <strong
-                      className={
-                        Number(r["total"]) - Number(r["amountPaid"]) > 0
-                          ? "text-rose-700"
-                          : "text-emerald-700"
+                    <StatusBadge
+                      value={
+                        text(r["status"]) === "COMPLETED"
+                          ? "COMPLETED"
+                          : text(r["sampleStatus"]) === "COLLECTED"
+                            ? "RESULTS ENTRY"
+                            : "SAMPLE COLLECTION"
                       }
-                    >
-                      {money(
-                        Math.max(0, Number(r["total"]) - Number(r["amountPaid"])),
-                        workspace.tenant.currencyCode,
-                      )}
-                    </strong>
+                    />
                   ),
                 },
-                { label: "Status", render: (r) => <StatusBadge value={text(r["status"])} /> },
                 {
                   label: "Actions",
                   render: (r) => (
@@ -1167,7 +1267,9 @@ export function LabPage({
                       onClick={() => {
                         setSelectedVisit(r);
                         setLabPayment({
-                          amount: String(Math.max(0, Number(r["total"]) - Number(r["amountPaid"]))),
+                          amount: clinicalOnly
+                            ? ""
+                            : String(Math.max(0, Number(r["total"]) - Number(r["amountPaid"]))),
                           method: "CASH",
                           externalReference: "",
                           notes: "",
@@ -1230,40 +1332,97 @@ export function LabPage({
                 <button className="btn-primary" onClick={() => setCategoryOpen(true)}>
                   <Plus size={16} /> Category
                 </button>
-                <button className="btn-secondary" onClick={() => setTestOpen(true)}>
+                <button
+                  className="btn-secondary"
+                  onClick={() => {
+                    setEditingTest(null);
+                    setTestOpen(true);
+                  }}
+                >
                   <Plus size={16} /> Test and price
                 </button>
               </>
             ) : null}
           </div>
-          <div className="grid gap-5 md:grid-cols-2">
-            {(categories.data ?? []).map((c) => (
-              <Card key={text(c["id"])} title={text(c["name"])}>
-                <div className="p-4">
-                  <SimpleTable
-                    pageSize={false}
-                    rows={rows(c["tests"])}
-                    columns={[
-                      { label: "Code", render: (r) => text(r["code"]) },
-                      { label: "Test", render: (r) => text(r["name"]) },
-                      { label: "Result type", render: (r) => text(r["resultType"]) },
-                      { label: "Sample", render: (r) => text(r["sampleType"]) || "—" },
+          <Card
+            title="Laboratory test catalog"
+            description="Manage every test from one searchable table."
+          >
+            <SimpleTable
+              pageSize={10}
+              rows={catalogTests}
+              columns={[
+                { label: "Code", render: (r) => <strong>{text(r["code"])}</strong> },
+                { label: "Test", render: (r) => text(r["name"]) },
+                { label: "Category", render: (r) => text(r["categoryName"]) },
+                { label: "Result type", render: (r) => text(r["resultType"]).replaceAll("_", " ") },
+                { label: "Sample", render: (r) => text(r["sampleType"]) || "—" },
+                ...(clinicalOnly
+                  ? []
+                  : [
                       {
                         label: "Price",
-                        render: (r) => money(r["price"], workspace.tenant.currencyCode),
+                        render: (r: Row) => money(r["price"], workspace.tenant.currencyCode),
                       },
+                    ]),
+                {
+                  label: "Status",
+                  render: (r) => (
+                    <StatusBadge value={r["active"] === false ? "INACTIVE" : "ACTIVE"} />
+                  ),
+                },
+                ...(canManage
+                  ? [
                       {
-                        label: "Status",
-                        render: (r) => (
-                          <StatusBadge value={r["active"] === false ? "INACTIVE" : "ACTIVE"} />
+                        label: "Actions",
+                        render: (r: Row) => (
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              className="btn-secondary"
+                              onClick={() => {
+                                setEditingTest(r);
+                                setTestForm({
+                                  categoryId: text(r["categoryId"]),
+                                  code: text(r["code"]),
+                                  name: text(r["name"]),
+                                  description: text(r["description"]),
+                                  price: text(r["price"]),
+                                  sampleType: text(r["sampleType"]),
+                                  resultType: text(r["resultType"]) || "POSITIVE_NEGATIVE",
+                                  unit: text(r["unit"]),
+                                  referenceRange: text(r["referenceRange"]),
+                                  resultOptions: rows(r["resultOptions"]).map(String).join(", "),
+                                  panelComponents: rows(r["panelComponents"])
+                                    .map((item) =>
+                                      [
+                                        text(item["name"]),
+                                        text(item["unit"]),
+                                        text(item["referenceRange"]),
+                                      ].join(" | "),
+                                    )
+                                    .join("\n"),
+                                  active: r["active"] !== false,
+                                });
+                                setTestOpen(true);
+                              }}
+                            >
+                              <Pencil size={15} /> Edit
+                            </button>
+                            <button
+                              className="btn-secondary text-rose-700"
+                              disabled={archiveTest.isPending || r["active"] === false}
+                              onClick={() => archiveTest.mutate(text(r["id"]))}
+                            >
+                              <Trash2 size={15} /> Delete
+                            </button>
+                          </div>
                         ),
                       },
-                    ]}
-                  />
-                </div>
-              </Card>
-            ))}
-          </div>
+                    ]
+                  : []),
+              ]}
+            />
+          </Card>
         </>
       ) : null}
       <Dialog open={patientOpen} title="Register patient" onClose={() => setPatientOpen(false)}>
@@ -1391,7 +1550,14 @@ export function LabPage({
           <button className="btn-primary">Save category</button>
         </form>
       </Dialog>
-      <Dialog open={testOpen} title="New lab test" onClose={() => setTestOpen(false)}>
+      <Dialog
+        open={testOpen}
+        title={editingTest ? "Edit lab test" : "New lab test"}
+        onClose={() => {
+          setTestOpen(false);
+          setEditingTest(null);
+        }}
+      >
         <form
           className="space-y-4 p-5"
           onSubmit={(e) => {
@@ -1506,7 +1672,23 @@ export function LabPage({
               required
             />
           </Field>
-          <button className="btn-primary">Save test</button>
+          {editingTest ? (
+            <Field label="Status">
+              <select
+                className="input"
+                value={testForm.active ? "ACTIVE" : "INACTIVE"}
+                onChange={(event) =>
+                  setTestForm({ ...testForm, active: event.target.value === "ACTIVE" })
+                }
+              >
+                <option value="ACTIVE">Active</option>
+                <option value="INACTIVE">Inactive</option>
+              </select>
+            </Field>
+          ) : null}
+          <button className="btn-primary" disabled={createTest.isPending}>
+            {editingTest ? "Save changes" : "Create test"}
+          </button>
         </form>
       </Dialog>
       <Dialog wide open={visitOpen} title="Register lab visit" onClose={() => setVisitOpen(false)}>
@@ -1688,279 +1870,399 @@ export function LabPage({
         onClose={() => setSelectedVisit(null)}
       >
         <div className="max-h-[75vh] space-y-6 overflow-y-auto p-5">
-          <div className="flex flex-wrap gap-2 print:hidden">
-            <button className="btn-secondary" onClick={() => window.print()}>
-              <Printer size={15} /> Print lab report
-            </button>
-          </div>
-          {selectedVisit ? (
+          {showResultsPanel || text(selectedVisit?.["status"]) === "COMPLETED" ? (
+            <div className="flex flex-wrap gap-2 print:hidden">
+              <button className="btn-secondary" onClick={() => window.print()}>
+                <Printer size={15} /> Print lab report
+              </button>
+            </div>
+          ) : null}
+          {selectedVisit && (showResultsPanel || text(selectedVisit["status"]) === "COMPLETED") ? (
             <LabReportPrint visit={selectedVisit} workspace={workspace} branch={branch} />
           ) : null}{" "}
-          <Card title="Lacagta baaritaanka (Lab payment)">
-            <div className="space-y-4 p-4">
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl bg-slate-50 p-3">
-                  <p className="text-xs text-slate-500">Total</p>
-                  <strong>{money(selectedVisit?.["total"], workspace.tenant.currencyCode)}</strong>
-                </div>
-                <div className="rounded-xl bg-emerald-50 p-3">
-                  <p className="text-xs text-emerald-700">Paid</p>
-                  <strong>
-                    {money(selectedVisit?.["amountPaid"], workspace.tenant.currencyCode)}
-                  </strong>
-                </div>
-                <div
-                  className={
-                    selectedVisitBalance > 0
-                      ? "rounded-xl bg-rose-50 p-3"
-                      : "rounded-xl bg-emerald-50 p-3"
-                  }
-                >
-                  <p className="text-xs">Balance</p>
-                  <strong>{money(selectedVisitBalance, workspace.tenant.currencyCode)}</strong>
-                </div>
-              </div>
-              {selectedVisitBalance > 0 ? (
-                canCollectPayment ? (
-                  <form
-                    className="grid gap-3 md:grid-cols-2"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      collectLabPayment.mutate();
-                    }}
-                  >
-                    <Field label="Lacagta la qabanayo (Amount to collect)">
-                      <input
-                        className="input"
-                        type="number"
-                        min="0.01"
-                        max={selectedVisitBalance}
-                        step="0.01"
-                        value={labPayment.amount}
-                        onChange={(e) => setLabPayment({ ...labPayment, amount: e.target.value })}
-                        required
-                      />
-                    </Field>
-                    <Field label="Habka lacagta (Payment method)">
-                      <select
-                        className="input"
-                        value={labPayment.method}
-                        onChange={(e) => setLabPayment({ ...labPayment, method: e.target.value })}
-                      >
-                        {["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "OTHER"].map((x) => (
-                          <option key={x}>{x}</option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="Tixraaca (Reference)">
-                      <input
-                        className="input"
-                        value={labPayment.externalReference}
-                        onChange={(e) =>
-                          setLabPayment({ ...labPayment, externalReference: e.target.value })
-                        }
-                      />
-                    </Field>
-                    <Field label="Faahfaahin (Notes)">
-                      <input
-                        className="input"
-                        value={labPayment.notes}
-                        onChange={(e) => setLabPayment({ ...labPayment, notes: e.target.value })}
-                      />
-                    </Field>
-                    {collectLabPayment.error ? (
-                      <p className="text-rose-700 md:col-span-2">
-                        {errorMessage(collectLabPayment.error)}
-                      </p>
-                    ) : null}
-                    <button
-                      className="btn-primary md:col-span-2"
-                      disabled={collectLabPayment.isPending}
-                    >
-                      Collect payment before releasing result
-                    </button>
-                  </form>
-                ) : (
-                  <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
-                    Payment is still due. Ask an Owner, Admin or Manager to collect it.
-                  </p>
-                )
-              ) : (
-                <p className="rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
-                  PAID IN FULL — natiijada waa la siin karaa bukaanka.
-                </p>
-              )}
-            </div>
-          </Card>
-          <Card title="Test results">
-            <div className="space-y-3 p-4">
-              {visitTests.map((t) => {
-                const testId = text(t["id"]);
-                const resultType = text(t["resultType"] || "POSITIVE_NEGATIVE");
-                const catalog = object(t["labTest"]);
-                const panelComponents = rows(catalog["panelComponents"]);
-                const resultOptions = rows(catalog["resultOptions"]);
-                const f = resultForms[testId] ?? {
-                  resultStatus: text(t["resultStatus"] || "PENDING"),
-                  resultValue: text(t["resultValue"]),
-                  numericValue: text(t["numericValue"]),
-                  interpretation: text(t["interpretation"]),
-                  resultData: object(t["resultData"]) as Record<string, string>,
-                  resultNote: text(t["resultNote"]),
-                };
-                const update = (patch: Partial<typeof f>) =>
-                  setResultForms({ ...resultForms, [testId]: { ...f, ...patch } });
-                return (
+          {clinicalOnly ? null : (
+            <Card title="Lacagta baaritaanka (Lab payment)">
+              <div className="space-y-4 p-4">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <p className="text-xs text-slate-500">Total</p>
+                    <strong>
+                      {money(selectedVisit?.["total"], workspace.tenant.currencyCode)}
+                    </strong>
+                  </div>
+                  <div className="rounded-xl bg-emerald-50 p-3">
+                    <p className="text-xs text-emerald-700">Paid</p>
+                    <strong>
+                      {money(selectedVisit?.["amountPaid"], workspace.tenant.currencyCode)}
+                    </strong>
+                  </div>
                   <div
-                    key={testId}
                     className={
-                      "space-y-3 rounded-xl border p-4 " +
-                      (f.resultStatus === "POSITIVE"
-                        ? "border-rose-300 bg-rose-50"
-                        : "border-slate-200")
+                      selectedVisitBalance > 0
+                        ? "rounded-xl bg-rose-50 p-3"
+                        : "rounded-xl bg-emerald-50 p-3"
                     }
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <strong>{text(t["categoryName"])} / {text(t["testName"])}</strong>
-                        <p className="text-xs text-slate-500">
-                          {resultType.replaceAll("_", " ")}
-                          {t["unit"] ? " - " + text(t["unit"]) : ""}
-                          {t["referenceRange"] ? " - Reference: " + text(t["referenceRange"]) : ""}
+                    <p className="text-xs">Balance</p>
+                    <strong>{money(selectedVisitBalance, workspace.tenant.currencyCode)}</strong>
+                  </div>
+                </div>
+                {selectedVisitBalance > 0 ? (
+                  canCollectPayment ? (
+                    <form
+                      className="grid gap-3 md:grid-cols-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        collectLabPayment.mutate();
+                      }}
+                    >
+                      <Field label="Lacagta la qabanayo (Amount to collect)">
+                        <input
+                          className="input"
+                          type="number"
+                          min="0.01"
+                          max={selectedVisitBalance}
+                          step="0.01"
+                          value={labPayment.amount}
+                          onChange={(e) => setLabPayment({ ...labPayment, amount: e.target.value })}
+                          required
+                        />
+                      </Field>
+                      <Field label="Habka lacagta (Payment method)">
+                        <select
+                          className="input"
+                          value={labPayment.method}
+                          onChange={(e) => setLabPayment({ ...labPayment, method: e.target.value })}
+                        >
+                          {["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "OTHER"].map((x) => (
+                            <option key={x}>{x}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Tixraaca (Reference)">
+                        <input
+                          className="input"
+                          value={labPayment.externalReference}
+                          onChange={(e) =>
+                            setLabPayment({ ...labPayment, externalReference: e.target.value })
+                          }
+                        />
+                      </Field>
+                      <Field label="Faahfaahin (Notes)">
+                        <input
+                          className="input"
+                          value={labPayment.notes}
+                          onChange={(e) => setLabPayment({ ...labPayment, notes: e.target.value })}
+                        />
+                      </Field>
+                      {collectLabPayment.error ? (
+                        <p className="text-rose-700 md:col-span-2">
+                          {errorMessage(collectLabPayment.error)}
                         </p>
+                      ) : null}
+                      <button
+                        className="btn-primary md:col-span-2"
+                        disabled={collectLabPayment.isPending}
+                      >
+                        Collect payment before releasing result
+                      </button>
+                    </form>
+                  ) : (
+                    <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+                      Payment is still due. Ask an Owner, Admin or Manager to collect it.
+                    </p>
+                  )
+                ) : (
+                  <p className="rounded-xl bg-emerald-50 p-3 text-sm font-bold text-emerald-800">
+                    PAID IN FULL — natiijada waa la siin karaa bukaanka.
+                  </p>
+                )}
+              </div>
+            </Card>
+          )}
+          {showSamplePanel ? (
+            <Card
+              title="Sample collection"
+              description="Hubi warqadda receipt-ga uu Reception-ku siiyey bukaanka, kadib diiwaangeli sample-ka."
+            >
+              <form
+                className="grid gap-4 p-4 md:grid-cols-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  collectSample.mutate();
+                }}
+              >
+                <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">
+                      Reception receipt
+                    </p>
+                    <p className="mt-1 text-sm text-emerald-900">
+                      Bukaanku wuxuu keenay warqadda receipt-ga.
+                    </p>
+                  </div>
+                  <StatusBadge value="PAID" />
+                </div>
+                <div className="space-y-3 md:col-span-2">
+                  {visitTests.map((test, index) => {
+                    const testId = text(test["id"]);
+                    const form = sampleForms[testId] ?? {
+                      sampleId: text(test["sampleId"]),
+                      sampleNotes: text(test["sampleNotes"]),
+                    };
+                    const updateSample = (patch: Partial<typeof form>) =>
+                      setSampleForms({ ...sampleForms, [testId]: { ...form, ...patch } });
+                    return (
+                      <section key={testId} className="rounded-xl border border-slate-200 p-4">
+                        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              Sample {index + 1} of {visitTests.length}
+                            </p>
+                            <h4 className="mt-1 font-bold text-slate-900">
+                              {text(test["testName"])}
+                            </h4>
+                          </div>
+                          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                            {text(test["sampleType"]) ||
+                              text(object(test["labTest"])["sampleType"]) ||
+                              "Specimen"}
+                          </span>
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <Field label="Sample ID / tube number">
+                            <input
+                              className="input"
+                              value={form.sampleId}
+                              onChange={(event) => updateSample({ sampleId: event.target.value })}
+                              required
+                            />
+                          </Field>
+                          <Field label="Collection notes">
+                            <input
+                              className="input"
+                              value={form.sampleNotes}
+                              onChange={(event) =>
+                                updateSample({ sampleNotes: event.target.value })
+                              }
+                            />
+                          </Field>
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
+                {collectSample.error ? (
+                  <p className="text-rose-700 md:col-span-2">{errorMessage(collectSample.error)}</p>
+                ) : null}
+                <button
+                  className="btn-primary md:col-span-2"
+                  disabled={
+                    collectSample.isPending ||
+                    !canCollectSample ||
+                    !text(selectedVisit?.["clinicVisitId"]) ||
+                    visitTests.some((test) => {
+                      const testId = text(test["id"]);
+                      return !(sampleForms[testId]?.sampleId || text(test["sampleId"])).trim();
+                    })
+                  }
+                >
+                  Confirm sample collection
+                </button>
+              </form>
+            </Card>
+          ) : null}
+          {showResultsPanel ? (
+            <Card title="Test results">
+              <div className="space-y-3 p-4">
+                {visitTests.map((t) => {
+                  const testId = text(t["id"]);
+                  const resultType = text(t["resultType"] || "POSITIVE_NEGATIVE");
+                  const catalog = object(t["labTest"]);
+                  const panelComponents = rows(catalog["panelComponents"]);
+                  const resultOptions = rows(catalog["resultOptions"]);
+                  const f = resultForms[testId] ?? {
+                    resultStatus: text(t["resultStatus"] || "PENDING"),
+                    resultValue: text(t["resultValue"]),
+                    numericValue: text(t["numericValue"]),
+                    interpretation: text(t["interpretation"]),
+                    resultData: object(t["resultData"]) as Record<string, string>,
+                    resultNote: text(t["resultNote"]),
+                  };
+                  const update = (patch: Partial<typeof f>) =>
+                    setResultForms({ ...resultForms, [testId]: { ...f, ...patch } });
+                  return (
+                    <div
+                      key={testId}
+                      className={
+                        "space-y-3 rounded-xl border p-4 " +
+                        (f.resultStatus === "POSITIVE"
+                          ? "border-rose-300 bg-rose-50"
+                          : "border-slate-200")
+                      }
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <strong>
+                            {text(t["categoryName"])} / {text(t["testName"])}
+                          </strong>
+                          <p className="text-xs text-slate-500">
+                            {resultType.replaceAll("_", " ")}
+                            {t["unit"] ? " - " + text(t["unit"]) : ""}
+                            {t["referenceRange"]
+                              ? " - Reference: " + text(t["referenceRange"])
+                              : ""}
+                          </p>
+                        </div>
+                        <StatusBadge value={text(t["resultStatus"])} />
                       </div>
-                      <StatusBadge value={text(t["resultStatus"])} />
-                    </div>
 
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                      {resultType === "POSITIVE_NEGATIVE" ? (
-                        <Field label="Result">
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        {resultType === "POSITIVE_NEGATIVE" ? (
+                          <Field label="Result">
+                            <select
+                              className="input"
+                              disabled={!canResult}
+                              value={f.resultStatus}
+                              onChange={(event) => update({ resultStatus: event.target.value })}
+                            >
+                              {["PENDING", "NEGATIVE", "POSITIVE", "INCONCLUSIVE"].map((value) => (
+                                <option key={value}>{value}</option>
+                              ))}
+                            </select>
+                          </Field>
+                        ) : null}
+                        {resultType === "NUMERIC" ? (
+                          <Field
+                            label={
+                              "Measured value" + (t["unit"] ? " (" + text(t["unit"]) + ")" : "")
+                            }
+                          >
+                            <input
+                              className="input"
+                              type="number"
+                              step="any"
+                              disabled={!canResult}
+                              value={f.numericValue}
+                              onChange={(event) => update({ numericValue: event.target.value })}
+                            />
+                          </Field>
+                        ) : null}
+                        {resultType === "TEXT" ? (
+                          <Field label="Result text">
+                            <textarea
+                              className="input"
+                              disabled={!canResult}
+                              value={f.resultValue}
+                              onChange={(event) => update({ resultValue: event.target.value })}
+                            />
+                          </Field>
+                        ) : null}
+                        {resultType === "SELECT" ? (
+                          <Field label="Result">
+                            <select
+                              className="input"
+                              disabled={!canResult}
+                              value={f.resultValue}
+                              onChange={(event) => update({ resultValue: event.target.value })}
+                            >
+                              <option value="">Choose result</option>
+                              {resultOptions.map((option) => (
+                                <option key={text(option)} value={text(option)}>
+                                  {text(option)}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                        ) : null}
+                        <Field label="Interpretation">
                           <select
                             className="input"
                             disabled={!canResult}
-                            value={f.resultStatus}
-                            onChange={(event) => update({ resultStatus: event.target.value })}
+                            value={f.interpretation}
+                            onChange={(event) => update({ interpretation: event.target.value })}
                           >
-                            {["PENDING", "NEGATIVE", "POSITIVE", "INCONCLUSIVE"].map((value) => (
+                            <option value="">Not specified</option>
+                            {[
+                              "NORMAL",
+                              "ABNORMAL",
+                              "HIGH",
+                              "LOW",
+                              "POSITIVE",
+                              "NEGATIVE",
+                              "CRITICAL",
+                              "INCONCLUSIVE",
+                              "BORDERLINE",
+                            ].map((value) => (
                               <option key={value}>{value}</option>
                             ))}
                           </select>
                         </Field>
-                      ) : null}
-                      {resultType === "NUMERIC" ? (
-                        <Field label={"Measured value" + (t["unit"] ? " (" + text(t["unit"]) + ")" : "")}>
+                        <Field label="Result notes">
                           <input
                             className="input"
-                            type="number"
-                            step="any"
                             disabled={!canResult}
-                            value={f.numericValue}
-                            onChange={(event) => update({ numericValue: event.target.value })}
+                            value={f.resultNote}
+                            onChange={(event) => update({ resultNote: event.target.value })}
                           />
                         </Field>
-                      ) : null}
-                      {resultType === "TEXT" ? (
-                        <Field label="Result text">
-                          <textarea
-                            className="input"
-                            disabled={!canResult}
-                            value={f.resultValue}
-                            onChange={(event) => update({ resultValue: event.target.value })}
-                          />
-                        </Field>
-                      ) : null}
-                      {resultType === "SELECT" ? (
-                        <Field label="Result">
-                          <select
-                            className="input"
-                            disabled={!canResult}
-                            value={f.resultValue}
-                            onChange={(event) => update({ resultValue: event.target.value })}
-                          >
-                            <option value="">Choose result</option>
-                            {resultOptions.map((option) => (
-                              <option key={text(option)} value={text(option)}>{text(option)}</option>
-                            ))}
-                          </select>
-                        </Field>
-                      ) : null}
-                      <Field label="Interpretation">
-                        <select
-                          className="input"
-                          disabled={!canResult}
-                          value={f.interpretation}
-                          onChange={(event) => update({ interpretation: event.target.value })}
-                        >
-                          <option value="">Not specified</option>
-                          {["NORMAL", "ABNORMAL", "HIGH", "LOW", "POSITIVE", "NEGATIVE", "CRITICAL", "INCONCLUSIVE", "BORDERLINE"].map((value) => (
-                            <option key={value}>{value}</option>
-                          ))}
-                        </select>
-                      </Field>
-                      <Field label="Result notes">
-                        <input
-                          className="input"
-                          disabled={!canResult}
-                          value={f.resultNote}
-                          onChange={(event) => update({ resultNote: event.target.value })}
-                        />
-                      </Field>
-                    </div>
-
-                    {resultType === "PANEL" ? (
-                      <div className="grid gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {panelComponents.map((component) => {
-                          const name = text(component["name"]);
-                          return (
-                            <Field
-                              key={name}
-                              label={
-                                name +
-                                (component["unit"] ? " (" + text(component["unit"]) + ")" : "")
-                              }
-                              hint={
-                                component["referenceRange"]
-                                  ? "Reference: " + text(component["referenceRange"])
-                                  : "Reference range not configured"
-                              }
-                            >
-                              <input
-                                className="input"
-                                disabled={!canResult}
-                                value={f.resultData[name] ?? ""}
-                                onChange={(event) =>
-                                  update({
-                                    resultData: {
-                                      ...f.resultData,
-                                      [name]: event.target.value,
-                                    },
-                                  })
-                                }
-                              />
-                            </Field>
-                          );
-                        })}
                       </div>
-                    ) : null}
 
-                    {canResult ? (
-                      <button
-                        className="btn-primary"
-                        onClick={() =>
-                          markResult.mutate({
-                            visitId: text(selectedVisit?.["id"]),
-                            testId,
-                          })
-                        }
-                      >
-                        Save result
-                      </button>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
+                      {resultType === "PANEL" ? (
+                        <div className="grid gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-3">
+                          {panelComponents.map((component) => {
+                            const name = text(component["name"]);
+                            return (
+                              <Field
+                                key={name}
+                                label={
+                                  name +
+                                  (component["unit"] ? " (" + text(component["unit"]) + ")" : "")
+                                }
+                                hint={
+                                  component["referenceRange"]
+                                    ? "Reference: " + text(component["referenceRange"])
+                                    : "Reference range not configured"
+                                }
+                              >
+                                <input
+                                  className="input"
+                                  disabled={!canResult}
+                                  value={f.resultData[name] ?? ""}
+                                  onChange={(event) =>
+                                    update({
+                                      resultData: {
+                                        ...f.resultData,
+                                        [name]: event.target.value,
+                                      },
+                                    })
+                                  }
+                                />
+                              </Field>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+
+                      {canResult ? (
+                        <button
+                          className="btn-primary"
+                          onClick={() =>
+                            markResult.mutate({
+                              visitId: text(selectedVisit?.["id"]),
+                              testId,
+                            })
+                          }
+                        >
+                          Save result
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          ) : null}
         </div>
       </Dialog>
     </>
