@@ -36,6 +36,7 @@ import {
 import { CustomersPage, LabPage, SuppliersPage } from "./pages/operations-pages";
 import { ClinicPage } from "./pages/clinic-page";
 import { ClinicalVisitPage } from "./pages/clinical-visit-page";
+import { ClinicalPrintPage, type ClinicalPrintKind } from "./pages/clinical-print-page";
 import type { PlatformPrincipal, TenantPrincipal, Workspace } from "./types";
 
 function PlatformApplication({ pathname }: { pathname: string }) {
@@ -44,13 +45,23 @@ function PlatformApplication({ pathname }: { pathname: string }) {
     queryFn: () => getData<PlatformPrincipal>("/platform/auth/me"),
     retry: false,
   });
+  useEffect(() => {
+    if (principal.isLoading) return;
+    if (principal.error || !principal.data) {
+      if (pathname !== "/platform/login") navigate("/platform/login", true);
+      return;
+    }
+    if (pathname === "/platform/login" || pathname === "/platform") {
+      navigate(platformDashboardPath, true);
+    }
+  }, [pathname, principal.data, principal.error, principal.isLoading]);
   if (principal.isLoading) return <LoadingState label="Restoring platform session" />;
   if (principal.error || !principal.data) {
-    if (pathname !== "/platform/login") navigate("/platform/login", true);
     return <PlatformLoginPage />;
   }
-  if (pathname === "/platform/login" || pathname === "/platform")
-    navigate(platformDashboardPath, true);
+  if (pathname === "/platform/login" || pathname === "/platform") {
+    return <LoadingState label="Opening platform dashboard" />;
+  }
   let page: React.ReactNode = <PlatformOverviewPage principal={principal.data} />;
   if (pathname === "/platform/tenants") page = <PlatformTenantsPage principal={principal.data} />;
   else if (pathname === "/platform/tenants/new")
@@ -118,21 +129,40 @@ function TenantApplication({ pathname }: { pathname: string }) {
       setBranchId(workspace.data.branches[0]!.id);
     }
   }, [workspace.data, branchId]);
+  useEffect(() => {
+    if (principal.isLoading) return;
+    if (principal.error || !principal.data) {
+      if (pathname !== "/login") navigate("/login", true);
+      return;
+    }
+    if (pathname === "/login") navigate(tenantLandingPath(principal.data.role), true);
+  }, [pathname, principal.data, principal.error, principal.isLoading]);
   const branch = useMemo(
     () => workspace.data?.branches.find((item) => item.id === branchId),
     [workspace.data, branchId],
   );
   if (principal.isLoading) return <LoadingState label="Restoring pharmacy session" />;
   if (principal.error || !principal.data) {
-    if (pathname !== "/login") navigate("/login", true);
     return <TenantLoginPage />;
   }
-  if (pathname === "/login") navigate(tenantLandingPath(principal.data.role), true);
+  if (pathname === "/login") return <LoadingState label="Opening your workspace" />;
   if (workspace.isLoading) return <LoadingState label="Loading tenant workspace" />;
   if (workspace.error || !workspace.data) return <ErrorState error={workspace.error} />;
   let page: React.ReactNode = <DashboardPage branch={branch} workspace={workspace.data} />;
+  const clinicalPrintMatch = pathname.match(
+    /^\/clinic\/visits\/([^/]+)\/print\/(prescription|lab|consultation-receipt|lab-receipt)$/,
+  );
   const clinicalVisitMatch = pathname.match(/^\/clinic\/visits\/([^/]+)$/);
-  if (clinicalVisitMatch)
+  if (clinicalPrintMatch)
+    page = (
+      <ClinicalPrintPage
+        visitId={clinicalPrintMatch[1]!}
+        kind={clinicalPrintMatch[2] as ClinicalPrintKind}
+        workspace={workspace.data}
+        principal={principal.data}
+      />
+    );
+  else if (clinicalVisitMatch)
     page = (
       <ClinicalVisitPage
         visitId={clinicalVisitMatch[1]!}

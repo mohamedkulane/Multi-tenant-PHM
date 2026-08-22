@@ -6,15 +6,17 @@ PHMS now connects reception, clinical examination, laboratory, diagnosis, prescr
 
 ## Role boundaries
 
-| Role | Working area |
-|---|---|
-| Owner / Admin | Configuration and controlled oversight across the tenant |
-| Receptionist | Patient registration, doctor assignment, consultation payment, lab payment, and receipt printing |
-| Doctor | Patient history, manual clinical assessment, lab ordering, diagnosis, prescription, and clinical printing |
-| Lab technician | Paid lab queue, sample collection, typed result entry, interpretation, and result completion |
-| Pharmacist | Prescription queue, medicine-to-product mapping, dispensing, stock-aware sale, and pharmacy payment |
+| Role           | Working area                                                                                              |
+| -------------- | --------------------------------------------------------------------------------------------------------- |
+| Owner / Admin  | Configuration and controlled oversight across the tenant                                                  |
+| Receptionist   | Patient registration, doctor assignment, consultation payment, lab payment, and receipt printing          |
+| Doctor         | Patient history, manual clinical assessment, lab ordering, diagnosis, prescription, and clinical printing |
+| Lab technician | Paid lab queue, sample collection, typed result entry, interpretation, and result completion              |
+| Pharmacist     | Prescription queue, medicine-to-product mapping, dispensing, stock-aware sale, and pharmacy payment       |
 
 General sales, expense, margin, and operational reports are not available to doctors. Every API action is also protected server-side by granular permissions; hiding a navigation item is not treated as authorization.
+
+Clinical API responses are role-redacted as defense in depth. Reception does not receive result values or the doctor's clinical record, laboratory staff do not receive diagnoses or prescriptions, and pharmacy staff receive prescriptions without clinical assessments or lab records.
 
 ## Visit state machine
 
@@ -72,6 +74,17 @@ All new clinical tables use composite tenant foreign keys, PostgreSQL row-level 
 - `GET /api/v1/clinic/prescriptions?branchId=...`
 - `POST /api/v1/clinic/visits/:id/lab/:labVisitId/sample`
 - Lab catalog, lab payment, result, and sales checkout endpoints retain their existing base paths with the expanded payloads.
+- `GET /api/v1/reports/clinical?branchId=...&from=...&to=...`
+
+## Documents, settings, and reporting
+
+Reception can print separate consultation and laboratory receipts. Doctors can print the final prescription and laboratory report, and laboratory staff can print the completed laboratory report. These documents use tenant logo, display name, support contact, and the administrator-managed document footer. Reception confirms the consultation price on each visit.
+
+The owner/admin dashboard separates consultation, laboratory, and clinic-linked pharmacy revenue. It also reports today's patients, waiting patients, completed visits, performed tests, common tests, and commonly prescribed medicines. The `clinical` report can be searched, paged, and exported through the existing report export pipeline.
+
+## Development seed
+
+Set `PHMS_SEED_TENANT_SLUG` to an existing tenant slug before running the seed command to add an idempotent demo patient and a basic catalog containing Malaria, HIV, random blood sugar, urinalysis, and CBC panel tests. The seed never creates staff passwords.
 
 ## Migration and verification
 

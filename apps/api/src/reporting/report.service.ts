@@ -18,6 +18,7 @@ export interface ReportService {
   debts(principal: AuthenticatedPrincipal, branchId: string): Promise<unknown>;
   expenses(principal: AuthenticatedPrincipal, range: ReportRange): Promise<unknown>;
   margin(principal: AuthenticatedPrincipal, range: ReportRange): Promise<unknown>;
+  clinical(principal: AuthenticatedPrincipal, range: ReportRange): Promise<unknown>;
   customerHistory(principal: AuthenticatedPrincipal, phone: string): Promise<unknown>;
 }
 
@@ -174,6 +175,90 @@ export class PrismaReportService implements ReportService {
         ORDER BY sum(si.base_units_sold - si.base_units_returned) DESC
         LIMIT 10
       `);
+      const [clinical] = await transaction.$queryRaw<
+        Array<{
+          patientsToday: number;
+          visitsToday: number;
+          patientsWaiting: number;
+          completedVisits: number;
+          labTestsPerformed: number;
+          consultationRevenue: string;
+          labRevenue: string;
+          pharmacyRevenue: string;
+        }>
+      >(Prisma.sql`
+        SELECT
+          (SELECT count(DISTINCT cv.patient_id)::int FROM public.clinic_visits cv
+            WHERE cv.tenant_id = ${principal.tenantId}::uuid
+              AND cv.branch_id = ${range.branchId}::uuid
+              AND cv.created_at >= CURRENT_DATE
+              AND cv.created_at < CURRENT_DATE + interval '1 day') AS "patientsToday",
+          (SELECT count(*)::int FROM public.clinic_visits cv
+            WHERE cv.tenant_id = ${principal.tenantId}::uuid
+              AND cv.branch_id = ${range.branchId}::uuid
+              AND cv.created_at >= CURRENT_DATE
+              AND cv.created_at < CURRENT_DATE + interval '1 day') AS "visitsToday",
+          (SELECT count(*)::int FROM public.clinic_visits cv
+            WHERE cv.tenant_id = ${principal.tenantId}::uuid
+              AND cv.branch_id = ${range.branchId}::uuid
+              AND cv.status NOT IN ('COMPLETED', 'CANCELLED')) AS "patientsWaiting",
+          (SELECT count(*)::int FROM public.clinic_visits cv
+            WHERE cv.tenant_id = ${principal.tenantId}::uuid
+              AND cv.branch_id = ${range.branchId}::uuid
+              AND cv.status = 'COMPLETED'
+              AND cv.completed_at >= ${range.from}::date
+              AND cv.completed_at < (${range.to}::date + interval '1 day')) AS "completedVisits",
+          (SELECT count(*)::int FROM public.lab_visit_tests lvt
+            JOIN public.lab_visits lv ON lv.tenant_id = lvt.tenant_id AND lv.id = lvt.visit_id
+            WHERE lv.tenant_id = ${principal.tenantId}::uuid
+              AND lv.branch_id = ${range.branchId}::uuid
+              AND lvt.marked_at >= ${range.from}::date
+              AND lvt.marked_at < (${range.to}::date + interval '1 day')
+              AND lvt.result_status <> 'PENDING') AS "labTestsPerformed",
+          COALESCE((SELECT sum(cp.amount) FROM public.clinical_payments cp
+            WHERE cp.tenant_id = ${principal.tenantId}::uuid
+              AND cp.branch_id = ${range.branchId}::uuid
+              AND cp.type = 'CONSULTATION' AND cp.status = 'PAID'
+              AND cp.paid_at >= ${range.from}::date
+              AND cp.paid_at < (${range.to}::date + interval '1 day')), 0)::text AS "consultationRevenue",
+          COALESCE((SELECT sum(cp.amount) FROM public.clinical_payments cp
+            WHERE cp.tenant_id = ${principal.tenantId}::uuid
+              AND cp.branch_id = ${range.branchId}::uuid
+              AND cp.type = 'LAB' AND cp.status = 'PAID'
+              AND cp.paid_at >= ${range.from}::date
+              AND cp.paid_at < (${range.to}::date + interval '1 day')), 0)::text AS "labRevenue",
+          COALESCE((SELECT sum(s.grand_total - s.returned_total) FROM public.sales s
+            WHERE s.tenant_id = ${principal.tenantId}::uuid
+              AND s.branch_id = ${range.branchId}::uuid
+              AND s.clinic_visit_id IS NOT NULL
+              AND s.business_date BETWEEN ${range.from}::date AND ${range.to}::date
+              AND s.status <> 'VOIDED'), 0)::text AS "pharmacyRevenue"
+      `);
+      const [topLabTests, topPrescribedMedicines] = await Promise.all([
+        transaction.$queryRaw<Array<{ label: string; count: number }>>(Prisma.sql`
+          SELECT lvt.test_name AS label, count(*)::int AS count
+          FROM public.lab_visit_tests lvt
+          JOIN public.lab_visits lv ON lv.tenant_id = lvt.tenant_id AND lv.id = lvt.visit_id
+          WHERE lv.tenant_id = ${principal.tenantId}::uuid
+            AND lv.branch_id = ${range.branchId}::uuid
+            AND lv.created_at >= ${range.from}::date
+            AND lv.created_at < (${range.to}::date + interval '1 day')
+          GROUP BY lvt.test_name ORDER BY count(*) DESC, lvt.test_name LIMIT 10
+        `),
+        transaction.$queryRaw<Array<{ label: string; count: number }>>(Prisma.sql`
+          SELECT pi.medicine_name AS label, count(*)::int AS count
+          FROM public.prescription_items pi
+          JOIN public.prescriptions p ON p.tenant_id = pi.tenant_id AND p.id = pi.prescription_id
+          WHERE p.tenant_id = ${principal.tenantId}::uuid
+            AND p.branch_id = ${range.branchId}::uuid
+            AND p.created_at >= ${range.from}::date
+            AND p.created_at < (${range.to}::date + interval '1 day')
+          GROUP BY pi.medicine_name ORDER BY count(*) DESC, pi.medicine_name LIMIT 10
+        `),
+      ]);
+      const consultationRevenue = clinical?.consultationRevenue ?? "0";
+      const labRevenue = clinical?.labRevenue ?? "0";
+      const pharmacyRevenue = clinical?.pharmacyRevenue ?? "0";
       return {
         cards: {
           salesCount: cards?.sales_count ?? 0,
@@ -185,8 +270,20 @@ export class PrismaReportService implements ReportService {
           overdueDebts: cards?.overdue_debts ?? 0,
           expenses: cards?.expenses ?? "0",
           lowStockProducts: cards?.low_stock_products ?? 0,
+          patientsToday: clinical?.patientsToday ?? 0,
+          visitsToday: clinical?.visitsToday ?? 0,
+          patientsWaiting: clinical?.patientsWaiting ?? 0,
+          completedVisits: clinical?.completedVisits ?? 0,
+          labTestsPerformed: clinical?.labTestsPerformed ?? 0,
+          consultationRevenue,
+          labRevenue,
+          pharmacyRevenue,
+          totalRevenue: new Prisma.Decimal(consultationRevenue)
+            .plus(labRevenue)
+            .plus(pharmacyRevenue)
+            .toFixed(4),
         },
-        charts: { dailyNetSales: trends, topProducts },
+        charts: { dailyNetSales: trends, topProducts, topLabTests, topPrescribedMedicines },
       };
     });
   }
@@ -382,6 +479,72 @@ export class PrismaReportService implements ReportService {
           costOfGoods: totals.costOfGoods.toFixed(6),
           margin: totals.margin.toFixed(4),
         },
+      };
+    });
+  }
+
+  async clinical(principal: AuthenticatedPrincipal, range: ReportRange) {
+    requireBranch(principal, range.branchId);
+    validateReportRange(range.from, range.to);
+    return reportContext(principal, range.branchId, async (transaction) => {
+      const rows = await transaction.$queryRaw<
+        Array<{
+          businessDate: string;
+          consultationRevenue: string;
+          labRevenue: string;
+          pharmacyRevenue: string;
+          totalRevenue: string;
+        }>
+      >(Prisma.sql`
+        WITH clinical AS (
+          SELECT cp.paid_at::date AS business_date,
+            sum(cp.amount) FILTER (WHERE cp.type = 'CONSULTATION') AS consultation,
+            sum(cp.amount) FILTER (WHERE cp.type = 'LAB') AS laboratory
+          FROM public.clinical_payments cp
+          WHERE cp.tenant_id = ${principal.tenantId}::uuid
+            AND cp.branch_id = ${range.branchId}::uuid
+            AND cp.status = 'PAID'
+            AND cp.paid_at >= ${range.from}::date
+            AND cp.paid_at < (${range.to}::date + interval '1 day')
+          GROUP BY cp.paid_at::date
+        ), pharmacy AS (
+          SELECT s.business_date,
+            sum(s.grand_total - s.returned_total) AS revenue
+          FROM public.sales s
+          WHERE s.tenant_id = ${principal.tenantId}::uuid
+            AND s.branch_id = ${range.branchId}::uuid
+            AND s.clinic_visit_id IS NOT NULL
+            AND s.status <> 'VOIDED'
+            AND s.business_date BETWEEN ${range.from}::date AND ${range.to}::date
+          GROUP BY s.business_date
+        )
+        SELECT COALESCE(c.business_date, p.business_date)::text AS "businessDate",
+          COALESCE(c.consultation, 0)::text AS "consultationRevenue",
+          COALESCE(c.laboratory, 0)::text AS "labRevenue",
+          COALESCE(p.revenue, 0)::text AS "pharmacyRevenue",
+          (COALESCE(c.consultation, 0) + COALESCE(c.laboratory, 0) + COALESCE(p.revenue, 0))::text AS "totalRevenue"
+        FROM clinical c FULL OUTER JOIN pharmacy p ON p.business_date = c.business_date
+        ORDER BY COALESCE(c.business_date, p.business_date) DESC
+      `);
+      const totals = rows.reduce(
+        (sum, row) => ({
+          consultationRevenue: sum.consultationRevenue.plus(row.consultationRevenue),
+          labRevenue: sum.labRevenue.plus(row.labRevenue),
+          pharmacyRevenue: sum.pharmacyRevenue.plus(row.pharmacyRevenue),
+          totalRevenue: sum.totalRevenue.plus(row.totalRevenue),
+        }),
+        {
+          consultationRevenue: new Prisma.Decimal(0),
+          labRevenue: new Prisma.Decimal(0),
+          pharmacyRevenue: new Prisma.Decimal(0),
+          totalRevenue: new Prisma.Decimal(0),
+        },
+      );
+      return {
+        rows,
+        totals: Object.fromEntries(
+          Object.entries(totals).map(([key, value]) => [key, value.toFixed(4)]),
+        ),
       };
     });
   }

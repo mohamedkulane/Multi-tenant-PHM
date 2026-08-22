@@ -161,4 +161,72 @@ describe("M12 customer, supplier and laboratory routes", () => {
       expect.any(String),
     );
   });
+
+  it("prevents reception staff from entering laboratory results", async () => {
+    const receptionist: AuthenticatedPrincipal = { ...principal, role: "RECEPTIONIST" };
+    const restrictedAuthentication: AuthService = {
+      login: vi.fn(),
+      authenticate: vi.fn().mockResolvedValue(receptionist),
+      logout: vi.fn(),
+    };
+    const laboratory = new LabService();
+    const markResult = vi.spyOn(laboratory, "markResult");
+    const response = await request(
+      createApp({ authentication: restrictedAuthentication, laboratory }),
+    )
+      .patch(`/api/v1/lab/visits/${patientId}/tests/${testId}/result`)
+      .set("Cookie", "phms_session=test")
+      .send({ resultStatus: "POSITIVE" });
+
+    expect(response.status).toBe(403);
+    expect(markResult).not.toHaveBeenCalled();
+  });
+
+  it("accepts qualitative, numeric and panel result payloads from a lab technician", async () => {
+    const technician: AuthenticatedPrincipal = { ...principal, role: "LAB_TECHNICIAN" };
+    const labAuthentication: AuthService = {
+      login: vi.fn(),
+      authenticate: vi.fn().mockResolvedValue(technician),
+      logout: vi.fn(),
+    };
+    const laboratory = new LabService();
+    const markResult = vi
+      .spyOn(laboratory, "markResult")
+      .mockResolvedValue({ id: patientId } as never);
+    const app = createApp({ authentication: labAuthentication, laboratory });
+    const endpoint = `/api/v1/lab/visits/${patientId}/tests/${testId}/result`;
+    const qualitative = await request(app)
+      .patch(endpoint)
+      .set("Cookie", "phms_session=test")
+      .send({ resultStatus: "POSITIVE", interpretation: "POSITIVE" });
+    const numeric = await request(app)
+      .patch(endpoint)
+      .set("Cookie", "phms_session=test")
+      .send({ resultStatus: "COMPLETED", numericValue: 145, interpretation: "HIGH" });
+    const panel = await request(app)
+      .patch(endpoint)
+      .set("Cookie", "phms_session=test")
+      .send({
+        resultStatus: "COMPLETED",
+        resultData: {
+          components: [{ name: "WBC", value: "7.2", unit: "10^9/L", interpretation: "NORMAL" }],
+        },
+      });
+
+    expect([qualitative.status, numeric.status, panel.status]).toEqual([200, 200, 200]);
+    expect(markResult).toHaveBeenNthCalledWith(
+      2,
+      technician,
+      patientId,
+      testId,
+      expect.objectContaining({ resultStatus: "COMPLETED", numericValue: 145 }),
+    );
+    expect(markResult).toHaveBeenNthCalledWith(
+      3,
+      technician,
+      patientId,
+      testId,
+      expect.objectContaining({ resultData: expect.any(Object) }),
+    );
+  });
 });

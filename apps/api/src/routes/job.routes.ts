@@ -16,7 +16,7 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const exportSchema = z
   .object({
-    reportType: z.enum(["sales", "inventory", "debts", "expenses", "margin"]),
+    reportType: z.enum(["sales", "inventory", "debts", "expenses", "margin", "clinical"]),
     branchId: uuid,
     from: date.optional(),
     to: date.optional(),

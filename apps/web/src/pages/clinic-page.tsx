@@ -90,7 +90,9 @@ export function ClinicPage({
   const [patientOpen, setPatientOpen] = useState(false);
   const [consultOpen, setConsultOpen] = useState(false);
   const [prescriptionOpen, setPrescriptionOpen] = useState(false);
+  const [sampleOpen, setSampleOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("CASH");
+  const [patientSearch, setPatientSearch] = useState("");
   const [visitForm, setVisitForm] = useState({
     patientId: "",
     consultationFee: "0",
@@ -100,8 +102,19 @@ export function ClinicPage({
     name: "",
     age: "",
     sex: "",
+    dateOfBirth: "",
     phone: "",
+    address: "",
+    emergencyContactName: "",
+    emergencyContactPhone: "",
+    bloodGroup: "",
+    allergies: "",
     notes: "",
+  });
+  const [sampleForm, setSampleForm] = useState({
+    sampleType: "",
+    sampleId: "",
+    sampleNotes: "",
   });
   const [consultForm, setConsultForm] = useState({
     chiefComplaint: "",
@@ -132,8 +145,11 @@ export function ClinicPage({
     enabled: Boolean(branch) && canRegister,
   });
   const patients = useQuery({
-    queryKey: ["lab-patients"],
-    queryFn: () => getData<Row[]>("/lab/patients"),
+    queryKey: ["lab-patients", patientSearch],
+    queryFn: () =>
+      getData<Row[]>(
+        `/lab/patients${patientSearch.trim() ? `?q=${encodeURIComponent(patientSearch.trim())}` : ""}`,
+      ),
     enabled: canRegister,
   });
   const categories = useQuery({
@@ -181,12 +197,30 @@ export function ClinicPage({
         ...patientForm,
         age: Number(patientForm.age),
         sex: patientForm.sex || undefined,
+        dateOfBirth: patientForm.dateOfBirth || undefined,
         phone: patientForm.phone || undefined,
+        address: patientForm.address || undefined,
+        emergencyContactName: patientForm.emergencyContactName || undefined,
+        emergencyContactPhone: patientForm.emergencyContactPhone || undefined,
+        bloodGroup: patientForm.bloodGroup || undefined,
+        allergies: patientForm.allergies || undefined,
         notes: patientForm.notes || undefined,
       }),
     onSuccess: async (patient) => {
       setPatientOpen(false);
-      setPatientForm({ name: "", age: "", sex: "", phone: "", notes: "" });
+      setPatientForm({
+        name: "",
+        age: "",
+        sex: "",
+        dateOfBirth: "",
+        phone: "",
+        address: "",
+        emergencyContactName: "",
+        emergencyContactPhone: "",
+        bloodGroup: "",
+        allergies: "",
+        notes: "",
+      });
       setVisitForm((current) => ({ ...current, patientId: text(patient["id"]) }));
       setRegisterOpen(true);
       await client.invalidateQueries({ queryKey: ["lab-patients"] });
@@ -196,8 +230,7 @@ export function ClinicPage({
     mutationFn: () =>
       sendData<Row>("post", `/clinic/visits/${text(selected?.["id"])}/consultation-payment`, {
         method: paymentMethod,
-        idempotencyKey:
-          "consultation:" + text(selected?.["id"]) + ":" + crypto.randomUUID(),
+        idempotencyKey: "consultation:" + text(selected?.["id"]) + ":" + crypto.randomUUID(),
       }),
     onSuccess: async (visit) => {
       setSelected(visit);
@@ -253,10 +286,17 @@ export function ClinicPage({
       return sendData<Row>(
         "post",
         `/clinic/visits/${text(selected?.["id"])}/lab/${text(lab?.["id"])}/sample`,
+        {
+          sampleType: sampleForm.sampleType || undefined,
+          sampleId: sampleForm.sampleId || undefined,
+          sampleNotes: sampleForm.sampleNotes || undefined,
+        },
       );
     },
     onSuccess: async (visit) => {
       setSelected(visit);
+      setSampleOpen(false);
+      setSampleForm({ sampleType: "", sampleId: "", sampleNotes: "" });
       showToast({ title: "Sample collected", message: "Natiijooyinka hadda waa la geli karaa." });
       await refresh();
     },
@@ -390,7 +430,9 @@ export function ClinicPage({
             </div>
             <div className="rounded-xl bg-slate-50 p-3">
               <span className="text-xs text-slate-500">Payment</span>
-              <p className="mt-1 font-bold">{statusLabel(selected?.["consultationPaymentStatus"])}</p>
+              <p className="mt-1 font-bold">
+                {statusLabel(selected?.["consultationPaymentStatus"])}
+              </p>
             </div>
           </div>
           {canPay && selected?.["status"] === "AWAITING_CONSULTATION_PAYMENT" ? (
@@ -421,6 +463,16 @@ export function ClinicPage({
                 </p>
               ) : null}
             </Card>
+          ) : null}
+          {canPay && selected?.["consultationPaymentStatus"] === "PAID" ? (
+            <button
+              className="btn-secondary"
+              onClick={() =>
+                navigate(`/clinic/visits/${text(selected?.["id"])}/print/consultation-receipt`)
+              }
+            >
+              <Printer size={16} /> Print consultation receipt
+            </button>
           ) : null}
           {canConsult && selected?.["status"] === "WAITING_FOR_DOCTOR" ? (
             <button
@@ -491,7 +543,14 @@ export function ClinicPage({
                     <button
                       className="btn-primary"
                       disabled={collectSample.isPending}
-                      onClick={() => collectSample.mutate()}
+                      onClick={() => {
+                        setSampleForm({
+                          sampleType: text(currentLab["sampleType"]),
+                          sampleId: "",
+                          sampleNotes: "",
+                        });
+                        setSampleOpen(true);
+                      }}
                     >
                       <FlaskConical size={17} /> Collect sample
                     </button>
@@ -504,7 +563,21 @@ export function ClinicPage({
                       Open result entry
                     </button>
                   ) : null}
-                  <button className="btn-secondary" onClick={() => window.print()}>
+                  {canPay &&
+                  Number(currentLab["amountPaid"] ?? 0) >= Number(currentLab["total"] ?? 0) ? (
+                    <button
+                      className="btn-secondary"
+                      onClick={() =>
+                        navigate(`/clinic/visits/${text(selected?.["id"])}/print/lab-receipt`)
+                      }
+                    >
+                      <Printer size={16} /> Print lab receipt
+                    </button>
+                  ) : null}
+                  <button
+                    className="btn-secondary"
+                    onClick={() => navigate(`/clinic/visits/${text(selected?.["id"])}/print/lab`)}
+                  >
                     <Printer size={16} /> Print lab result
                   </button>
                 </div>
@@ -571,7 +644,12 @@ export function ClinicPage({
                   </tbody>
                 </table>
                 <div className="mt-4 flex gap-2">
-                  <button className="btn-secondary" onClick={() => window.print()}>
+                  <button
+                    className="btn-secondary"
+                    onClick={() =>
+                      navigate(`/clinic/visits/${text(selected?.["id"])}/print/prescription`)
+                    }
+                  >
                     <Printer size={16} /> Print prescription
                   </button>
                   {["OWNER", "ADMIN", "PHARMACIST"].includes(principal.role) ? (
@@ -587,6 +665,58 @@ export function ClinicPage({
       </Dialog>
 
       <Dialog
+        open={sampleOpen}
+        title="Collect laboratory sample"
+        onClose={() => setSampleOpen(false)}
+      >
+        <form
+          className="grid gap-4 p-5 sm:grid-cols-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            collectSample.mutate();
+          }}
+        >
+          <Field
+            label="Sample type"
+            hint="Use the test catalog suggestion or record the actual specimen."
+          >
+            <input
+              required
+              placeholder="Blood, urine, stool, swab…"
+              value={sampleForm.sampleType}
+              onChange={(event) => setSampleForm({ ...sampleForm, sampleType: event.target.value })}
+            />
+          </Field>
+          <Field label="Sample ID" hint="A traceable tube/container identifier.">
+            <input
+              required
+              placeholder="SMP-2026-0001"
+              value={sampleForm.sampleId}
+              onChange={(event) => setSampleForm({ ...sampleForm, sampleId: event.target.value })}
+            />
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="Collection notes">
+              <textarea
+                value={sampleForm.sampleNotes}
+                onChange={(event) =>
+                  setSampleForm({ ...sampleForm, sampleNotes: event.target.value })
+                }
+              />
+            </Field>
+          </div>
+          {collectSample.error ? (
+            <p className="text-sm text-rose-700 sm:col-span-2">
+              {errorMessage(collectSample.error)}
+            </p>
+          ) : null}
+          <button className="btn-primary sm:col-span-2" disabled={collectSample.isPending}>
+            <FlaskConical size={17} /> Confirm sample collection
+          </button>
+        </form>
+      </Dialog>
+
+      <Dialog
         open={registerOpen}
         title="Register patient visit"
         onClose={() => setRegisterOpen(false)}
@@ -598,6 +728,13 @@ export function ClinicPage({
             register.mutate();
           }}
         >
+          <Field label="Find patient" hint="Search by patient number, full name or phone.">
+            <input
+              placeholder="PT-000001, name or phone"
+              value={patientSearch}
+              onChange={(event) => setPatientSearch(event.target.value)}
+            />
+          </Field>
           <Field label="Patient" hint="Dooro bukaanka booqashada loo diiwaangelinayo.">
             <select
               required
@@ -607,7 +744,8 @@ export function ClinicPage({
               <option value="">Choose patient</option>
               {(patients.data ?? []).map((patient) => (
                 <option value={text(patient["id"])} key={text(patient["id"])}>
-                  {text(patient["name"])} · {text(patient["phone"])}
+                  {text(patient["patientNumber"])} · {text(patient["name"])} ·{" "}
+                  {text(patient["phone"])}
                 </option>
               ))}
             </select>
@@ -622,7 +760,10 @@ export function ClinicPage({
           >
             + New patient
           </button>
-          <Field label="Assign doctor" hint="Dooro doctor-ka qaabilaya bukaanka; waxaad sidoo kale u reebi kartaa queue-ga guud.">
+          <Field
+            label="Assign doctor"
+            hint="Dooro doctor-ka qaabilaya bukaanka; waxaad sidoo kale u reebi kartaa queue-ga guud."
+          >
             <select
               value={visitForm.doctorMembershipId}
               onChange={(event) =>
@@ -636,7 +777,8 @@ export function ClinicPage({
                 </option>
               ))}
             </select>
-          </Field>          <Field label="Consultation fee" hint="Geli lacagta booqashadan.">
+          </Field>{" "}
+          <Field label="Consultation fee" hint="Geli lacagta booqashadan.">
             <input
               required
               type="number"
@@ -682,9 +824,23 @@ export function ClinicPage({
             />
           </Field>
           <Field label="Sex">
-            <input
+            <select
               value={patientForm.sex}
               onChange={(event) => setPatientForm({ ...patientForm, sex: event.target.value })}
+            >
+              <option value="">Not recorded</option>
+              <option value="MALE">Male</option>
+              <option value="FEMALE">Female</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </Field>
+          <Field label="Date of birth">
+            <input
+              type="date"
+              value={patientForm.dateOfBirth}
+              onChange={(event) =>
+                setPatientForm({ ...patientForm, dateOfBirth: event.target.value })
+              }
             />
           </Field>
           <Field label="Phone">
@@ -693,6 +849,47 @@ export function ClinicPage({
               onChange={(event) => setPatientForm({ ...patientForm, phone: event.target.value })}
             />
           </Field>
+          <Field label="Address">
+            <input
+              value={patientForm.address}
+              onChange={(event) => setPatientForm({ ...patientForm, address: event.target.value })}
+            />
+          </Field>
+          <Field label="Emergency contact name">
+            <input
+              value={patientForm.emergencyContactName}
+              onChange={(event) =>
+                setPatientForm({ ...patientForm, emergencyContactName: event.target.value })
+              }
+            />
+          </Field>
+          <Field label="Emergency contact phone">
+            <input
+              value={patientForm.emergencyContactPhone}
+              onChange={(event) =>
+                setPatientForm({ ...patientForm, emergencyContactPhone: event.target.value })
+              }
+            />
+          </Field>
+          <Field label="Blood group">
+            <input
+              placeholder="O+, A-, AB+…"
+              value={patientForm.bloodGroup}
+              onChange={(event) =>
+                setPatientForm({ ...patientForm, bloodGroup: event.target.value })
+              }
+            />
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label="Known allergies">
+              <textarea
+                value={patientForm.allergies}
+                onChange={(event) =>
+                  setPatientForm({ ...patientForm, allergies: event.target.value })
+                }
+              />
+            </Field>
+          </div>
           <div className="sm:col-span-2">
             <Field label="Notes">
               <textarea

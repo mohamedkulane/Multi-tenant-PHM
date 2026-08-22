@@ -38,6 +38,7 @@ function reports(): ReportService {
     debts: vi.fn().mockResolvedValue([]),
     expenses: vi.fn().mockResolvedValue({ rows: [], totals: [] }),
     margin: vi.fn().mockResolvedValue({ rows: [], totals: {} }),
+    clinical: vi.fn().mockResolvedValue({ rows: [], totals: {} }),
     customerHistory: vi.fn().mockResolvedValue({ sales: [] }),
   };
 }
@@ -96,6 +97,44 @@ describe("M5 API routes", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("VALIDATION_FAILED");
+  });
+
+  it("returns separated clinical revenue and accepts a clinical Excel export", async () => {
+    const clinical = vi.fn().mockResolvedValue({
+      rows: [],
+      totals: {
+        consultationRevenue: "15.0000",
+        labRevenue: "25.0000",
+        pharmacyRevenue: "40.0000",
+        totalRevenue: "80.0000",
+      },
+    });
+    const reporting = { ...reports(), clinical };
+    const enqueueExport = vi.fn().mockResolvedValue({ id: jobId, status: "QUEUED" });
+    const jobService = { ...jobs(), enqueueExport };
+    const app = createApp({ authentication, reports: reporting, jobs: jobService });
+    const report = await request(app)
+      .get(`/api/v1/reports/clinical?branchId=${branchId}&from=2026-01-01&to=2026-01-31`)
+      .set("Cookie", "phms_session=test");
+    const queued = await request(app)
+      .post("/api/v1/jobs/exports")
+      .set("Cookie", "phms_session=test")
+      .send({
+        reportType: "clinical",
+        branchId,
+        from: "2026-01-01",
+        to: "2026-01-31",
+        idempotencyKey: "export:clinical:1",
+      });
+
+    expect(report.status).toBe(200);
+    expect(report.body.data.totals.totalRevenue).toBe("80.0000");
+    expect(queued.status).toBe(202);
+    expect(enqueueExport).toHaveBeenCalledWith(
+      principal,
+      expect.objectContaining({ reportType: "clinical" }),
+      "export:clinical:1",
+    );
   });
 
   it("returns a server-generated invoice PDF", async () => {

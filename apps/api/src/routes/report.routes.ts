@@ -55,6 +55,10 @@ export function createReportRouter(
     response.json({ data: await service.margin(request.auth!, range(request.query)) });
   });
 
+  router.get("/clinical", async (request, response) => {
+    response.json({ data: await service.clinical(request.auth!, range(request.query)) });
+  });
+
   router.get("/customer-history", async (request, response) => {
     const phone = z.string().trim().min(3).max(40).parse(request.query.phone);
     response.json({ data: await service.customerHistory(request.auth!, phone) });
