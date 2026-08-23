@@ -155,6 +155,70 @@ function redactClinicalVisit(principal: AuthenticatedPrincipal, visit: ClinicVis
 }
 
 export class ClinicService {
+  async visitSummaries(principal: AuthenticatedPrincipal, branchId: string) {
+    requireBranch(principal, branchId);
+    return withTenantContext(prisma, { ...principal, branchId }, (transaction) =>
+      transaction.clinicVisit.findMany({
+        where: {
+          tenantId: principal.tenantId,
+          branchId,
+          ...(principal.role === "DOCTOR"
+            ? {
+                AND: [
+                  {
+                    OR: [
+                      { assignedDoctorMembershipId: principal.membershipId },
+                      { assignedDoctorMembershipId: null },
+                    ],
+                  },
+                  {
+                    status: {
+                      in: [
+                        "WAITING_FOR_DOCTOR",
+                        "IN_EXAMINATION",
+                        "IN_CONSULTATION",
+                        "LAB_RESULTS_READY",
+                        "RESULTS_READY",
+                        "DOCTOR_REVIEW",
+                        "COMPLETED",
+                      ],
+                    },
+                  },
+                ],
+              }
+            : principal.role === "LAB_TECHNICIAN"
+              ? {
+                  status: {
+                    in: ["WAITING_FOR_SAMPLE", "WAITING_FOR_LAB", "LAB_IN_PROGRESS"],
+                  },
+                }
+              : principal.role === "PHARMACIST"
+                ? { status: "COMPLETED" }
+                : {}),
+        },
+        select: {
+          id: true,
+          visitNumber: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          completedAt: true,
+          patient: {
+            select: {
+              id: true,
+              patientNumber: true,
+              name: true,
+              age: true,
+              sex: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 300,
+      }),
+    );
+  }
+
   async visits(principal: AuthenticatedPrincipal, branchId: string) {
     requireBranch(principal, branchId);
     return withTenantContext(prisma, { ...principal, branchId }, async (transaction) => {

@@ -60,14 +60,14 @@ export function createClinicRouter(
   const router = Router();
   router.use(requireAuthentication(authentication));
 
-  router.get("/visits", requirePermission("clinic.read"), async (request, response) =>
-    response.json({
-      data: presentClinicalData(
-        request.auth!,
-        await service.visits(request.auth!, uuid.parse(request.query.branchId)),
-      ),
-    }),
-  );
+  router.get("/visits", requirePermission("clinic.read"), async (request, response) => {
+    const branchId = uuid.parse(request.query.branchId);
+    const visits =
+      request.query.view === "summary"
+        ? await service.visitSummaries(request.auth!, branchId)
+        : await service.visits(request.auth!, branchId);
+    response.json({ data: presentClinicalData(request.auth!, visits) });
+  });
   router.get("/doctors", requirePermission("clinic.assign"), async (request, response) =>
     response.json({
       data: await service.doctors(request.auth!, uuid.parse(request.query.branchId)),

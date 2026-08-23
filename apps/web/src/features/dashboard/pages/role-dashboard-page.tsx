@@ -39,8 +39,11 @@ export function RoleDashboardPage({
   principal: TenantPrincipal;
 }) {
   const clinicVisits = useQuery({
-    queryKey: ["clinic-visits", branch?.id],
-    queryFn: () => getData<DashboardRow[]>(`/clinic/visits?branchId=${branch!.id}`),
+    queryKey: ["clinic-visits", branch?.id, principal.role],
+    queryFn: () =>
+      getData<DashboardRow[]>(
+        `/clinic/visits?branchId=${branch!.id}${principal.role === "RECEPTIONIST" ? "&view=summary" : ""}`,
+      ),
     enabled: Boolean(branch) && ["DOCTOR", "RECEPTIONIST"].includes(principal.role),
     refetchInterval: 30_000,
   });

@@ -27,6 +27,27 @@ function authentication(principal: AuthenticatedPrincipal): AuthService {
 }
 
 describe("clinic workflow routes", () => {
+  it("loads a lightweight visit summary for the reception dashboard", async () => {
+    const principal: AuthenticatedPrincipal = { ...basePrincipal, role: "RECEPTIONIST" };
+    const clinic = new ClinicService();
+    const visitSummaries = vi.spyOn(clinic, "visitSummaries").mockResolvedValue([
+      {
+        id: "10000000-0000-4000-8000-000000000006",
+        visitNumber: "CLN-20260823-TEST",
+        status: "WAITING_FOR_DOCTOR",
+        patient: { name: "Test Patient" },
+      },
+    ] as never);
+
+    const response = await request(createApp({ authentication: authentication(principal), clinic }))
+      .get(`/api/v1/clinic/visits?branchId=${basePrincipal.branchIds[0]}&view=summary`)
+      .set("Cookie", "phms_session=test");
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toHaveLength(1);
+    expect(visitSummaries).toHaveBeenCalledWith(principal, basePrincipal.branchIds[0]);
+  });
+
   it("allows reception to register a paid-gate clinic visit", async () => {
     const principal: AuthenticatedPrincipal = { ...basePrincipal, role: "RECEPTIONIST" };
     const clinic = new ClinicService();
