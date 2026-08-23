@@ -65,7 +65,7 @@ describe("M4 API routes", () => {
         customerName: "Amina",
         discount: "0.2500",
         amountPaid: "1.0000",
-        paymentMethod: "CASH",
+        paymentMethod: "EVC_PLUS",
         idempotencyKey: "checkout:test:1",
         lines: [{ productId, packageCode: "unit", packageQuantity: 2 }],
       });
@@ -106,7 +106,7 @@ describe("M4 API routes", () => {
         customerName: "Clinical patient",
         clinicVisitId: saleId,
         amountPaid: "5.0000",
-        paymentMethod: "CASH",
+        paymentMethod: "E_DAHAB",
         idempotencyKey: "checkout:clinic-visit:1",
         lines: [
           {
@@ -137,7 +137,7 @@ describe("M4 API routes", () => {
       .send({
         branchId,
         amount: "1.0000",
-        method: "MOBILE_MONEY",
+        method: "SALAAM_BANK",
         idempotencyKey: "payment:test:1",
       });
 
@@ -145,6 +145,24 @@ describe("M4 API routes", () => {
     // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(sales.addPayment).toHaveBeenCalledOnce();
   });
+
+  it.each(["CASH", "CARD", "OTHER", "BANK"])(
+    "rejects unsupported new sale payment method %s",
+    async (method) => {
+      const sales = fakeSales();
+      const response = await request(createApp({ authentication, sales, expenses: fakeExpenses() }))
+        .post(`/api/v1/sales/${saleId}/payments`)
+        .set("Cookie", "phms_session=test")
+        .send({ branchId, amount: "1.00", method, idempotencyKey: `reject:${method}` });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toMatchObject({
+        code: "UNSUPPORTED_PAYMENT_METHOD",
+        message: "Unsupported payment method. Choose EVC-Plus, E-Dahab, or Salaam Bank.",
+      });
+      expect(sales.addPayment.mock.calls).toHaveLength(0);
+    },
+  );
 
   it("posts a branch expense with a tenant category", async () => {
     const expenses = fakeExpenses();

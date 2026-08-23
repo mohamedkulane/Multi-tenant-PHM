@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { DiagnosisType, LabOrderPriority, PaymentMethod, Prisma } from "@prisma/client";
+import type { DiagnosisType, LabOrderPriority, Prisma } from "@prisma/client";
 import type { AuthenticatedPrincipal } from "../auth/auth.types.js";
 import { prisma } from "../database/prisma.js";
 import { setTransactionContext, withTenantContext } from "../database/tenant-context.js";
 import { AppError } from "../errors/app-error.js";
 import { formatMoney, parseMoney } from "../finance/money.js";
 import { canAccessBranch } from "../middleware/authorization.js";
+import type { CanonicalPaymentMethod } from "../payments/payment-methods.js";
 
 export interface RegisterClinicVisitInput {
   branchId: string;
@@ -52,7 +53,7 @@ export interface LabRequestInput {
 }
 
 export interface ConsultationPaymentInput {
-  method: PaymentMethod;
+  method: CanonicalPaymentMethod;
   idempotencyKey: string;
   externalReference?: string | undefined;
 }

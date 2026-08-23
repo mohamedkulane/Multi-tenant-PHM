@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { DebtStatus, PaymentType, Prisma, SaleStatus } from "@prisma/client";
-import type { PaymentMethod } from "@prisma/client";
 import type { AuthenticatedPrincipal } from "../auth/auth.types.js";
 import { prisma } from "../database/prisma.js";
 import { setTransactionContext } from "../database/tenant-context.js";
 import { AppError } from "../errors/app-error.js";
 import { canAccessBranch } from "../middleware/authorization.js";
+import type { CanonicalPaymentMethod } from "../payments/payment-methods.js";
 import {
   decimalToMoney,
   decimalToUnitCost,
@@ -28,7 +28,7 @@ export interface CheckoutInput {
   clinicVisitId?: string | undefined;
   discount: string;
   amountPaid: string;
-  paymentMethod?: PaymentMethod | undefined;
+  paymentMethod?: CanonicalPaymentMethod | undefined;
   paymentReference?: string | undefined;
   dueDate?: Date | undefined;
   idempotencyKey: string;
@@ -39,7 +39,7 @@ export interface AddPaymentInput {
   branchId: string;
   saleId: string;
   amount: string;
-  method: PaymentMethod;
+  method: CanonicalPaymentMethod;
   externalReference?: string | undefined;
   notes?: string | undefined;
   idempotencyKey: string;
@@ -54,7 +54,7 @@ export interface ReturnSaleInput {
   branchId: string;
   saleId: string;
   reason: string;
-  refundMethod?: PaymentMethod | undefined;
+  refundMethod?: CanonicalPaymentMethod | undefined;
   idempotencyKey: string;
   lines: ReturnLineInput[];
 }
@@ -63,7 +63,7 @@ export interface VoidSaleInput {
   branchId: string;
   saleId: string;
   reason: string;
-  refundMethod?: PaymentMethod | undefined;
+  refundMethod?: CanonicalPaymentMethod | undefined;
   idempotencyKey: string;
 }
 

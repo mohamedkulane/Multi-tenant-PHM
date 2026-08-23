@@ -227,7 +227,7 @@ function Sidebar({
             <X size={20} />
           </button>
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto p-4">
+        <nav className="app-scrollbar-hidden flex-1 space-y-1 overflow-y-auto p-4">
           {navigation.map(({ to, label, icon: Icon, dividerBefore }) => {
             const active =
               currentPath === to ||

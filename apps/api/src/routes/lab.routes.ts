@@ -1,4 +1,4 @@
-import { LabInterpretation, LabResultStatus, LabResultType, PaymentMethod } from "@prisma/client";
+import { LabInterpretation, LabResultStatus, LabResultType } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import type { AuthService } from "../auth/auth.types.js";
@@ -6,6 +6,7 @@ import { presentClinicalData } from "../clinic/clinical-data-presenter.js";
 import { labService, type LabService } from "../lab/lab.service.js";
 import { requireAuthentication } from "../middleware/authentication.js";
 import { requirePermission } from "../middleware/authorization.js";
+import { paymentMethodSchema } from "../payments/payment-methods.js";
 
 const uuid = z.uuid();
 const money = z
@@ -143,7 +144,8 @@ export function createLabRouter(authentication: AuthService, service: LabService
             discount: money.default("0"),
             paymentTiming: z.enum(["NOW", "LATER"]).default("LATER"),
             amountPaid: money.default("0"),
-            paymentMethod: z.nativeEnum(PaymentMethod).optional(),
+            paymentMethod: paymentMethodSchema.optional(),
+            paymentReference: z.string().trim().max(180).optional(),
             clinicalNotes: z.string().trim().max(2000).optional(),
           })
           .parse(req.body),
@@ -159,7 +161,7 @@ export function createLabRouter(authentication: AuthService, service: LabService
         z
           .object({
             amount: money.refine((value) => Number(value) > 0, "Payment must be positive"),
-            method: z.nativeEnum(PaymentMethod),
+            method: paymentMethodSchema,
             externalReference: z.string().trim().max(180).optional(),
             notes: z.string().trim().max(500).optional(),
             idempotencyKey: z.string().trim().min(8).max(120),

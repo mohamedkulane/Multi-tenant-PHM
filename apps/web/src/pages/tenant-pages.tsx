@@ -49,6 +49,12 @@ import {
 } from "../components/ui";
 import { showToast } from "../components/toast";
 import { brandChartPalette } from "../lib/chart-colors";
+import {
+  DEFAULT_PAYMENT_METHOD,
+  PAYMENT_METHOD_OPTIONS,
+  formatPaymentMethod,
+  toPaymentMethod,
+} from "../lib/payment-methods";
 import type { Branch, TenantPrincipal, Workspace } from "../types";
 import { appendSaleCartLine, calculateSaleCartTotals, type SaleCartLine } from "./sales-cart";
 import { StaffAccountPage } from "../features/account/staff-account-page";
@@ -2001,7 +2007,8 @@ export function SalesPage({
   );
   const [actionForm, setActionForm] = useState({
     amount: "",
-    method: "CASH",
+    method: DEFAULT_PAYMENT_METHOD,
+    transactionReference: "",
     reason: "",
     saleItemId: "",
     quantityBaseUnits: "1",
@@ -2015,7 +2022,8 @@ export function SalesPage({
     packageCode: "unit",
     quantity: "1",
     amountPaid: "0",
-    paymentMethod: "CASH",
+    paymentMethod: DEFAULT_PAYMENT_METHOD,
+    paymentReference: "",
     discount: "0",
   });
   const products = useQuery({
@@ -2056,6 +2064,7 @@ export function SalesPage({
           branchId: branch!.id,
           amount: actionForm.amount,
           method: actionForm.method,
+          externalReference: actionForm.transactionReference.trim() || undefined,
           idempotencyKey: idempotency("payment"),
         });
       if (saleAction === "return")
@@ -2082,6 +2091,7 @@ export function SalesPage({
       setActionForm({
         ...actionForm,
         amount: "",
+        transactionReference: "",
         reason: "",
         saleItemId: "",
         quantityBaseUnits: "1",
@@ -2110,6 +2120,9 @@ export function SalesPage({
         discount: form.discount,
         amountPaid: form.amountPaid,
         ...(Number(form.amountPaid) > 0 ? { paymentMethod: form.paymentMethod } : {}),
+        ...(Number(form.amountPaid) > 0 && form.paymentReference.trim()
+          ? { paymentReference: form.paymentReference.trim() }
+          : {}),
         idempotencyKey: idempotency("sale"),
         lines: cart.map(({ productId, packageCode, packageQuantity }) => ({
           productId,
@@ -2126,6 +2139,7 @@ export function SalesPage({
         customerName: "Walk-in Customer",
         customerPhone: "",
         amountPaid: "0",
+        paymentReference: "",
         discount: "0",
       });
       setCart([]);
@@ -2749,18 +2763,40 @@ export function SalesPage({
                         onChange={(event) =>
                           setForm((current) => ({
                             ...current,
-                            paymentMethod: event.target.value,
+                            paymentMethod: toPaymentMethod(event.target.value),
                           }))
                         }
                       >
-                        {["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "OTHER"].map(
-                          (method) => (
-                            <option key={method}>{method}</option>
-                          ),
-                        )}
+                        {PAYMENT_METHOD_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
                       </select>
                     </Field>
                   </div>
+                  {Number(form.amountPaid) > 0 ? (
+                    <Field
+                      label="Transaction Reference"
+                      hint={
+                        form.paymentMethod === "SALAAM_BANK"
+                          ? "Recommended for Salaam Bank"
+                          : "Optional"
+                      }
+                    >
+                      <input
+                        className="input"
+                        value={form.paymentReference}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            paymentReference: event.target.value,
+                          }))
+                        }
+                        placeholder="Optional transaction reference"
+                      />
+                    </Field>
+                  ) : null}
 
                   <div className="rounded-xl bg-slate-900 p-4 text-white">
                     <p className="flex items-center justify-between">
@@ -3111,7 +3147,11 @@ export function SalesPage({
                     rows={rows(saleDetail.data["payments"])}
                     columns={[
                       { label: "Date", render: (row) => date(row["createdAt"]) },
-                      { label: "Method", render: (row) => text(row["method"]) },
+                      { label: "Method", render: (row) => formatPaymentMethod(row["method"]) },
+                      {
+                        label: "Transaction reference",
+                        render: (row) => text(row["externalReference"]) || "—",
+                      },
                       {
                         label: "Amount",
                         render: (row) => money(row["amount"], workspace.tenant.currencyCode),
@@ -3144,12 +3184,31 @@ export function SalesPage({
                   <select
                     className="input"
                     value={actionForm.method}
-                    onChange={(e) => setActionForm({ ...actionForm, method: e.target.value })}
+                    onChange={(e) =>
+                      setActionForm({ ...actionForm, method: toPaymentMethod(e.target.value) })
+                    }
                   >
-                    {["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "OTHER"].map((item) => (
-                      <option key={item}>{item}</option>
+                    {PAYMENT_METHOD_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
                     ))}
                   </select>
+                </Field>
+                <Field
+                  label="Transaction Reference"
+                  hint={
+                    actionForm.method === "SALAAM_BANK" ? "Recommended for Salaam Bank" : "Optional"
+                  }
+                >
+                  <input
+                    className="input"
+                    value={actionForm.transactionReference}
+                    onChange={(e) =>
+                      setActionForm({ ...actionForm, transactionReference: e.target.value })
+                    }
+                    placeholder="Optional transaction reference"
+                  />
                 </Field>
                 {saleOperation.error ? (
                   <p className="text-sm text-rose-700">{errorMessage(saleOperation.error)}</p>
@@ -3206,10 +3265,14 @@ export function SalesPage({
                   <select
                     className="input"
                     value={actionForm.method}
-                    onChange={(e) => setActionForm({ ...actionForm, method: e.target.value })}
+                    onChange={(e) =>
+                      setActionForm({ ...actionForm, method: toPaymentMethod(e.target.value) })
+                    }
                   >
-                    {["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "OTHER"].map((item) => (
-                      <option key={item}>{item}</option>
+                    {PAYMENT_METHOD_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
                     ))}
                   </select>
                 </Field>
@@ -3245,10 +3308,14 @@ export function SalesPage({
                   <select
                     className="input"
                     value={actionForm.method}
-                    onChange={(e) => setActionForm({ ...actionForm, method: e.target.value })}
+                    onChange={(e) =>
+                      setActionForm({ ...actionForm, method: toPaymentMethod(e.target.value) })
+                    }
                   >
-                    {["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "OTHER"].map((item) => (
-                      <option key={item}>{item}</option>
+                    {PAYMENT_METHOD_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
                     ))}
                   </select>
                 </Field>
@@ -3278,7 +3345,11 @@ export function DebtsPage({
 }) {
   const client = useQueryClient();
   const [selected, setSelected] = useState<Row | null>(null);
-  const [form, setForm] = useState({ amount: "", method: "CASH" });
+  const [form, setForm] = useState({
+    amount: "",
+    method: DEFAULT_PAYMENT_METHOD,
+    transactionReference: "",
+  });
   const query = useQuery({
     queryKey: ["debts", branch?.id],
     queryFn: () => getData<Row[]>(`/debts?branchId=${branch!.id}`),
@@ -3293,12 +3364,13 @@ export function DebtsPage({
           branchId: branch!.id,
           amount: form.amount,
           method: form.method,
+          externalReference: form.transactionReference.trim() || undefined,
           idempotencyKey: idempotency("debt-payment"),
         },
       ),
     onSuccess: async () => {
       setSelected(null);
-      setForm({ ...form, amount: "" });
+      setForm({ ...form, amount: "", transactionReference: "" });
       await Promise.all([
         client.invalidateQueries({ queryKey: ["debts"] }),
         client.invalidateQueries({ queryKey: ["sales"] }),
@@ -3431,12 +3503,25 @@ export function DebtsPage({
             <select
               className="input"
               value={form.method}
-              onChange={(e) => setForm({ ...form, method: e.target.value })}
+              onChange={(e) => setForm({ ...form, method: toPaymentMethod(e.target.value) })}
             >
-              {["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "OTHER"].map((item) => (
-                <option key={item}>{item}</option>
+              {PAYMENT_METHOD_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
               ))}
             </select>
+          </Field>
+          <Field
+            label="Transaction Reference"
+            hint={form.method === "SALAAM_BANK" ? "Recommended for Salaam Bank" : "Optional"}
+          >
+            <input
+              className="input"
+              value={form.transactionReference}
+              onChange={(e) => setForm({ ...form, transactionReference: e.target.value })}
+              placeholder="Optional transaction reference"
+            />
           </Field>
           {payment.error ? (
             <p className="text-sm text-rose-700">{errorMessage(payment.error)}</p>

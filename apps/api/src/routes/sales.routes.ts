@@ -1,10 +1,10 @@
-import { PaymentMethod } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import type { AuthService } from "../auth/auth.types.js";
 import { salesService, type SalesService } from "../finance/sales.service.js";
 import { requireAuthentication } from "../middleware/authentication.js";
 import { requirePermission } from "../middleware/authorization.js";
+import { paymentMethodSchema } from "../payments/payment-methods.js";
 
 const uuid = z.uuid();
 const idempotencyKey = z
@@ -17,7 +17,6 @@ const money = z
   .string()
   .trim()
   .regex(/^(0|[1-9][0-9]{0,14})(\.[0-9]{1,4})?$/);
-const paymentMethod = z.nativeEnum(PaymentMethod);
 const positiveBigInt = z
   .union([z.string().regex(/^[1-9][0-9]*$/), z.number().int().positive()])
   .transform((value) => BigInt(value));
@@ -30,7 +29,7 @@ const checkoutSchema = z.object({
   clinicVisitId: uuid.optional(),
   discount: money.default("0"),
   amountPaid: money.default("0"),
-  paymentMethod: paymentMethod.optional(),
+  paymentMethod: paymentMethodSchema.optional(),
   paymentReference: z.string().trim().max(180).optional(),
   dueDate: z.coerce.date().optional(),
   idempotencyKey,
@@ -49,7 +48,7 @@ const checkoutSchema = z.object({
 const paymentSchema = z.object({
   branchId: uuid,
   amount: money,
-  method: paymentMethod,
+  method: paymentMethodSchema,
   externalReference: z.string().trim().max(180).optional(),
   notes: z.string().trim().max(500).optional(),
   idempotencyKey,
@@ -58,7 +57,7 @@ const paymentSchema = z.object({
 const returnSchema = z.object({
   branchId: uuid,
   reason: z.string().trim().min(3).max(500),
-  refundMethod: paymentMethod.optional(),
+  refundMethod: paymentMethodSchema.optional(),
   idempotencyKey,
   lines: z
     .array(
@@ -74,7 +73,7 @@ const returnSchema = z.object({
 const voidSchema = z.object({
   branchId: uuid,
   reason: z.string().trim().min(3).max(500),
-  refundMethod: paymentMethod.optional(),
+  refundMethod: paymentMethodSchema.optional(),
   idempotencyKey,
 });
 

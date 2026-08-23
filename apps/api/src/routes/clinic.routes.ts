@@ -1,4 +1,4 @@
-import { DiagnosisType, LabOrderPriority, PaymentMethod } from "@prisma/client";
+import { DiagnosisType, LabOrderPriority } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import type { AuthService } from "../auth/auth.types.js";
@@ -6,6 +6,7 @@ import { presentClinicalData } from "../clinic/clinical-data-presenter.js";
 import { clinicService, type ClinicService } from "../clinic/clinic.service.js";
 import { requireAuthentication } from "../middleware/authentication.js";
 import { requirePermission } from "../middleware/authorization.js";
+import { paymentMethodSchema } from "../payments/payment-methods.js";
 
 const uuid = z.uuid();
 const money = z.union([z.string(), z.number()]).transform(String);
@@ -115,7 +116,7 @@ export function createClinicRouter(
     async (request, response) => {
       const body = z
         .object({
-          method: z.nativeEnum(PaymentMethod),
+          method: paymentMethodSchema,
           idempotencyKey,
           externalReference: optionalText(180),
         })

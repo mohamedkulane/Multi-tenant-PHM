@@ -2,6 +2,7 @@ import type { ErrorRequestHandler } from "express";
 import { ZodError } from "zod";
 import { AppError } from "../errors/app-error.js";
 import { logger } from "../lib/logger.js";
+import { UNSUPPORTED_PAYMENT_METHOD_MESSAGE } from "../payments/payment-methods.js";
 
 interface ResponseLocals {
   requestId?: string;
@@ -13,10 +14,15 @@ export const errorHandler: ErrorRequestHandler = (error, request, response, next
   const requestId = locals.requestId;
 
   if (error instanceof ZodError) {
+    const unsupportedPaymentMethod = error.issues.some(
+      (issue) => issue.message === UNSUPPORTED_PAYMENT_METHOD_MESSAGE,
+    );
     response.status(400).json({
       error: {
-        code: "VALIDATION_FAILED",
-        message: "The request could not be validated",
+        code: unsupportedPaymentMethod ? "UNSUPPORTED_PAYMENT_METHOD" : "VALIDATION_FAILED",
+        message: unsupportedPaymentMethod
+          ? UNSUPPORTED_PAYMENT_METHOD_MESSAGE
+          : "The request could not be validated",
         details: error.flatten(),
       },
       requestId,

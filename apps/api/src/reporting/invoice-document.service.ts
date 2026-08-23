@@ -4,6 +4,7 @@ import { withTenantContext } from "../database/tenant-context.js";
 import { AppError } from "../errors/app-error.js";
 import { canAccessBranch } from "../middleware/authorization.js";
 import { buildTextPdf } from "./pdf.js";
+import { formatPaymentMethod } from "../payments/payment-methods.js";
 
 export interface InvoiceDocumentService {
   pdf(
@@ -84,8 +85,9 @@ export class PrismaInvoiceDocumentService implements InvoiceDocumentService {
           "PAYMENTS / REFUNDS",
           ...sale.payments.map(
             (payment) =>
-              `${payment.createdAt.toISOString()} | ${payment.type} | ${payment.method} | ` +
-              money(payment.amount),
+              `${payment.createdAt.toISOString()} | ${payment.type} | ${formatPaymentMethod(payment.method)} | ` +
+              money(payment.amount) +
+              (payment.externalReference ? ` | Ref: ${payment.externalReference}` : ""),
           ),
           "",
           `Trace ID: ${sale.id}`,

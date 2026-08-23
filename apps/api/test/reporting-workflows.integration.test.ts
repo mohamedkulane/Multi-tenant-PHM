@@ -136,7 +136,7 @@ describeDatabase("M5 live reporting and job workflows", () => {
       customerPhone: "+252611111111",
       discount: "0",
       amountPaid: "10.0000",
-      paymentMethod: "CASH",
+      paymentMethod: "EVC_PLUS",
       idempotencyKey: `checkout:${randomUUID()}`,
       lines: [{ productId, packageCode: "piece", packageQuantity: 4 }],
     })) as unknown as { id: string; items: Array<{ id: string }> };
@@ -145,7 +145,7 @@ describeDatabase("M5 live reporting and job workflows", () => {
       branchId,
       saleId,
       reason: "M5 return evidence",
-      refundMethod: "CASH",
+      refundMethod: "E_DAHAB",
       idempotencyKey: `return:${randomUUID()}`,
       lines: [{ saleItemId: sale.items[0]!.id, quantityBaseUnits: 2n }],
     });

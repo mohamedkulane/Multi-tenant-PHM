@@ -73,6 +73,45 @@ describe("clinic workflow routes", () => {
     );
   });
 
+  it.each(["EVC_PLUS", "E_DAHAB", "SALAAM_BANK"] as const)(
+    "accepts consultation payment method %s",
+    async (method) => {
+      const principal: AuthenticatedPrincipal = { ...basePrincipal, role: "RECEPTIONIST" };
+      const clinic = new ClinicService();
+      const pay = vi
+        .spyOn(clinic, "payConsultation")
+        .mockResolvedValue({ id: "10000000-0000-4000-8000-000000000006" } as never);
+      const response = await request(
+        createApp({ authentication: authentication(principal), clinic }),
+      )
+        .post("/api/v1/clinic/visits/10000000-0000-4000-8000-000000000006/consultation-payment")
+        .set("Cookie", "phms_session=test")
+        .send({ method, idempotencyKey: `consultation:${method}` });
+
+      expect(response.status).toBe(200);
+      expect(pay).toHaveBeenCalledWith(
+        principal,
+        "10000000-0000-4000-8000-000000000006",
+        expect.objectContaining({ method }),
+        expect.any(String),
+      );
+    },
+  );
+
+  it("rejects a legacy consultation payment method", async () => {
+    const principal: AuthenticatedPrincipal = { ...basePrincipal, role: "RECEPTIONIST" };
+    const clinic = new ClinicService();
+    const pay = vi.spyOn(clinic, "payConsultation");
+    const response = await request(createApp({ authentication: authentication(principal), clinic }))
+      .post("/api/v1/clinic/visits/10000000-0000-4000-8000-000000000006/consultation-payment")
+      .set("Cookie", "phms_session=test")
+      .send({ method: "CASH", idempotencyKey: "consultation:legacy" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("UNSUPPORTED_PAYMENT_METHOD");
+    expect(pay).not.toHaveBeenCalled();
+  });
+
   it("keeps doctor-only clinical assessment writes away from reception", async () => {
     const principal: AuthenticatedPrincipal = { ...basePrincipal, role: "RECEPTIONIST" };
     const clinic = new ClinicService();

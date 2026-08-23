@@ -108,7 +108,7 @@ describe("M12 customer, supplier and laboratory routes", () => {
         testIds: [testId],
         discount: "2.00",
         amountPaid: "8.00",
-        paymentMethod: "CASH",
+        paymentMethod: "EVC_PLUS",
         clinicalNotes: "Routine test",
       });
     expect(response.status).toBe(201);
@@ -151,7 +151,7 @@ describe("M12 customer, supplier and laboratory routes", () => {
       .set("Cookie", "phms_session=test")
       .send({
         amount: "10.00",
-        method: "CASH",
+        method: "E_DAHAB",
         idempotencyKey: "lab-payment-route-test",
       });
     expect(payment.status).toBe(201);
@@ -159,9 +159,28 @@ describe("M12 customer, supplier and laboratory routes", () => {
     expect(domain.addPayment).toHaveBeenCalledWith(
       principal,
       patientId,
-      expect.objectContaining({ amount: "10.00", method: "CASH" }),
+      expect.objectContaining({ amount: "10.00", method: "E_DAHAB" }),
       expect.any(String),
     );
+  });
+
+  it("rejects a legacy laboratory payment method", async () => {
+    const domain = services();
+    const response = await request(
+      createApp({
+        authentication,
+        customers: domain.customers,
+        suppliers: domain.suppliers,
+        laboratory: domain.laboratory,
+      }),
+    )
+      .post("/api/v1/lab/visits/" + patientId + "/payments")
+      .set("Cookie", "phms_session=test")
+      .send({ amount: "10.00", method: "CARD", idempotencyKey: "lab-legacy-method" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("UNSUPPORTED_PAYMENT_METHOD");
+    expect(domain.addPayment).not.toHaveBeenCalled();
   });
 
   it("prevents reception staff from entering laboratory results", async () => {

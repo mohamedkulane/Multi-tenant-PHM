@@ -146,7 +146,7 @@ describeDatabase("M4 live finance workflows", () => {
       customerPhone: "+252610000000",
       discount: "1.0000",
       amountPaid: "3.0000",
-      paymentMethod: "CASH" as const,
+      paymentMethod: "EVC_PLUS" as const,
       idempotencyKey: `checkout:${randomUUID()}`,
       lines: [{ productId, packageCode: "piece", packageQuantity: 4 }],
     };
@@ -185,7 +185,7 @@ describeDatabase("M4 live finance workflows", () => {
       branchId,
       saleId,
       amount: "6.0000",
-      method: "MOBILE_MONEY" as const,
+      method: "SALAAM_BANK" as const,
       externalReference: "M4-PAYMENT-1",
       idempotencyKey: `payment:${randomUUID()}`,
     };
@@ -212,7 +212,7 @@ describeDatabase("M4 live finance workflows", () => {
       branchId,
       saleId,
       reason: "Customer returned unopened items",
-      refundMethod: "CASH",
+      refundMethod: "E_DAHAB",
       idempotencyKey: `return:${randomUUID()}`,
       lines: [{ saleItemId, quantityBaseUnits: 2n }],
     })) as unknown as {
@@ -239,7 +239,7 @@ describeDatabase("M4 live finance workflows", () => {
       branchId,
       saleId,
       reason: "Approved full invoice cancellation",
-      refundMethod: "CASH",
+      refundMethod: "E_DAHAB",
       idempotencyKey: `void:${randomUUID()}`,
     })) as unknown as {
       status: string;

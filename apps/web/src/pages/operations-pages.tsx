@@ -17,6 +17,12 @@ import {
   StatusBadge,
 } from "../components/ui";
 import type { Branch, TenantPrincipal, Workspace } from "../types";
+import {
+  DEFAULT_PAYMENT_METHOD,
+  PAYMENT_METHOD_OPTIONS,
+  formatPaymentMethod,
+  toPaymentMethod,
+} from "../lib/payment-methods";
 
 type Row = Record<string, unknown>;
 const text = (value: unknown) =>
@@ -682,7 +688,10 @@ function LabReportPrint({
             payments.map((payment) => (
               <p key={text(payment["id"])}>
                 <span>
-                  {date(payment["createdAt"])} | {text(payment["method"]).replaceAll("_", " ")}
+                  {date(payment["createdAt"])} | {formatPaymentMethod(payment["method"])}
+                  {payment["externalReference"]
+                    ? ` | Ref: ${text(payment["externalReference"])}`
+                    : ""}
                 </span>
                 <strong>{money(payment["amount"], workspace.tenant.currencyCode)}</strong>
               </p>
@@ -794,12 +803,13 @@ export function LabPage({
     discount: "0",
     paymentTiming: "LATER",
     amountPaid: "0",
-    paymentMethod: "CASH",
+    paymentMethod: DEFAULT_PAYMENT_METHOD,
+    paymentReference: "",
     clinicalNotes: "",
   });
   const [labPayment, setLabPayment] = useState({
     amount: "",
-    method: "CASH",
+    method: DEFAULT_PAYMENT_METHOD,
     externalReference: "",
     notes: "",
   });
@@ -986,6 +996,10 @@ export function LabPage({
           visitForm.paymentTiming === "NOW" && selectedTestTotal > 0
             ? visitForm.paymentMethod
             : undefined,
+        paymentReference:
+          visitForm.paymentTiming === "NOW"
+            ? visitForm.paymentReference.trim() || undefined
+            : undefined,
         clinicalNotes: visitForm.clinicalNotes || undefined,
       }),
     onSuccess: async () => {
@@ -996,7 +1010,8 @@ export function LabPage({
         discount: "0",
         paymentTiming: "LATER",
         amountPaid: "0",
-        paymentMethod: "CASH",
+        paymentMethod: DEFAULT_PAYMENT_METHOD,
+        paymentReference: "",
         clinicalNotes: "",
       });
       showToast({ title: "Lab visit registered" });
@@ -1014,7 +1029,12 @@ export function LabPage({
       }),
     onSuccess: async (visit) => {
       setSelectedVisit(visit);
-      setLabPayment({ amount: "", method: "CASH", externalReference: "", notes: "" });
+      setLabPayment({
+        amount: "",
+        method: DEFAULT_PAYMENT_METHOD,
+        externalReference: "",
+        notes: "",
+      });
       showToast({
         title: "Lab payment recorded",
         message: "Balance-ka bukaanka waa la cusbooneysiiyey.",
@@ -1270,7 +1290,7 @@ export function LabPage({
                           amount: clinicalOnly
                             ? ""
                             : String(Math.max(0, Number(r["total"]) - Number(r["amountPaid"]))),
-                          method: "CASH",
+                          method: DEFAULT_PAYMENT_METHOD,
                           externalReference: "",
                           notes: "",
                         });
@@ -1825,12 +1845,31 @@ export function LabPage({
                 <select
                   className="input"
                   value={visitForm.paymentMethod}
-                  onChange={(e) => setVisitForm({ ...visitForm, paymentMethod: e.target.value })}
+                  onChange={(e) =>
+                    setVisitForm({ ...visitForm, paymentMethod: toPaymentMethod(e.target.value) })
+                  }
                 >
-                  {["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "OTHER"].map((x) => (
-                    <option key={x}>{x}</option>
+                  {PAYMENT_METHOD_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
                   ))}
                 </select>
+              </Field>
+              <Field
+                label="Transaction Reference"
+                hint={
+                  visitForm.paymentMethod === "SALAAM_BANK"
+                    ? "Recommended for Salaam Bank"
+                    : "Optional"
+                }
+              >
+                <input
+                  className="input"
+                  value={visitForm.paymentReference}
+                  onChange={(e) => setVisitForm({ ...visitForm, paymentReference: e.target.value })}
+                  placeholder="Optional transaction reference"
+                />
               </Field>
             </>
           ) : (
@@ -1932,14 +1971,28 @@ export function LabPage({
                         <select
                           className="input"
                           value={labPayment.method}
-                          onChange={(e) => setLabPayment({ ...labPayment, method: e.target.value })}
+                          onChange={(e) =>
+                            setLabPayment({
+                              ...labPayment,
+                              method: toPaymentMethod(e.target.value),
+                            })
+                          }
                         >
-                          {["CASH", "CARD", "MOBILE_MONEY", "BANK_TRANSFER", "OTHER"].map((x) => (
-                            <option key={x}>{x}</option>
+                          {PAYMENT_METHOD_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
                           ))}
                         </select>
                       </Field>
-                      <Field label="Tixraaca (Reference)">
+                      <Field
+                        label="Transaction Reference"
+                        hint={
+                          labPayment.method === "SALAAM_BANK"
+                            ? "Recommended for Salaam Bank"
+                            : "Optional"
+                        }
+                      >
                         <input
                           className="input"
                           value={labPayment.externalReference}

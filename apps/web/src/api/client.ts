@@ -49,6 +49,8 @@ export function errorMessage(error: unknown) {
       VALIDATION_FAILED: "Xogta la geliyey ma saxna. Hubi meelaha form-ka oo mar kale isku day.",
       CURRENT_PASSWORD_INCORRECT: "Password-ka hadda aad isticmaasho waa khalad.",
       PASSWORD_UNCHANGED: "Password-ka cusub waa inuu ka duwanaadaa kii hore.",
+      UNSUPPORTED_PAYMENT_METHOD:
+        "Dooro EVC-Plus, E-Dahab, ama Salaam Bank. Hab kale lama taageero.",
       EMAIL_ALREADY_IN_USE: "Email-kan waxaa horay u isticmaala account kale.",
     };
     const backendMessage = payload?.error?.message ?? "";

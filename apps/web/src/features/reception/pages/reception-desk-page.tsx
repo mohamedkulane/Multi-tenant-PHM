@@ -17,6 +17,11 @@ import {
 } from "../../../components/ui";
 import type { Branch, Workspace } from "../../../types";
 import { Link } from "../../../lib/navigation";
+import {
+  DEFAULT_PAYMENT_METHOD,
+  PAYMENT_METHOD_OPTIONS,
+  toPaymentMethod,
+} from "../../../lib/payment-methods";
 
 type Row = Record<string, unknown>;
 const text = (value: unknown) =>
@@ -45,7 +50,8 @@ export function ReceptionDeskPage({
     phone: "",
     allergies: "",
   });
-  const [method, setMethod] = useState("CASH");
+  const [method, setMethod] = useState(DEFAULT_PAYMENT_METHOD);
+  const [transactionReference, setTransactionReference] = useState("");
   const visits = useQuery({
     queryKey: ["clinic-visits", branch?.id],
     queryFn: () => getData<Row[]>(`/clinic/visits?branchId=${branch!.id}`),
@@ -106,6 +112,7 @@ export function ReceptionDeskPage({
       kind === "CONSULTATION"
         ? sendData<Row>("post", `/clinic/visits/${text(visit["id"])}/consultation-payment`, {
             method,
+            externalReference: transactionReference.trim() || undefined,
             idempotencyKey: `consultation:${text(visit["id"])}:${crypto.randomUUID()}`,
           })
         : (() => {
@@ -114,10 +121,12 @@ export function ReceptionDeskPage({
             return sendData<Row>("post", `/lab/visits/${text(lab["id"])}/payments`, {
               amount: balance.toFixed(2),
               method,
+              externalReference: transactionReference.trim() || undefined,
               idempotencyKey: `laboratory:${text(lab["id"])}:${crypto.randomUUID()}`,
             });
           })(),
     onSuccess: async () => {
+      setTransactionReference("");
       showToast({
         title: "Payment received",
         message: "The patient can proceed to the next care station.",
@@ -152,17 +161,29 @@ export function ReceptionDeskPage({
         description="Clinical details and laboratory results are hidden from Reception."
       >
         <div className="border-b border-slate-100 p-4">
-          <Field label="Payment method">
+          <Field label="Payment Method *">
             <select
               className="max-w-xs"
               value={method}
-              onChange={(event) => setMethod(event.target.value)}
+              onChange={(event) => setMethod(toPaymentMethod(event.target.value))}
             >
-              <option value="CASH">Cash</option>
-              <option value="MOBILE_MONEY">Mobile money</option>
-              <option value="CARD">Card</option>
-              <option value="BANK_TRANSFER">Bank transfer</option>
+              {PAYMENT_METHOD_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
+          </Field>
+          <Field
+            label="Transaction Reference"
+            hint={method === "SALAAM_BANK" ? "Recommended for Salaam Bank" : "Optional"}
+          >
+            <input
+              className="max-w-xs"
+              value={transactionReference}
+              onChange={(event) => setTransactionReference(event.target.value)}
+              placeholder="Optional transaction reference"
+            />
           </Field>
         </div>
         <div className="overflow-x-auto">

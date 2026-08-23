@@ -3,6 +3,7 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { getData } from "../api/client";
 import { EmptyState, ErrorState, LoadingState, StatusBadge, date, money } from "../components/ui";
 import { navigate } from "../lib/navigation";
+import { formatPaymentMethod } from "../lib/payment-methods";
 import type { TenantPrincipal, Workspace } from "../types";
 
 type Row = Record<string, unknown>;
@@ -160,7 +161,11 @@ function Receipt({
         </div>
         <div>
           <span>Method</span>
-          <strong>{text(payments[0]?.["method"]) || "—"}</strong>
+          <strong>{formatPaymentMethod(payments[0]?.["method"])}</strong>
+        </div>
+        <div>
+          <span>Transaction reference</span>
+          <strong>{text(payments[0]?.["externalReference"]) || "—"}</strong>
         </div>
         <div>
           <span>Status</span>

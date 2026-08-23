@@ -1,17 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type {
-  LabInterpretation,
-  LabResultStatus,
-  LabResultType,
-  PaymentMethod,
-  Prisma,
-} from "@prisma/client";
+import type { LabInterpretation, LabResultStatus, LabResultType, Prisma } from "@prisma/client";
 import type { AuthenticatedPrincipal } from "../auth/auth.types.js";
 import { prisma } from "../database/prisma.js";
 import { setTransactionContext, withTenantContext } from "../database/tenant-context.js";
 import { AppError } from "../errors/app-error.js";
 import { parseMoney, formatMoney } from "../finance/money.js";
 import { canAccessBranch } from "../middleware/authorization.js";
+import type { CanonicalPaymentMethod } from "../payments/payment-methods.js";
 
 export interface PatientInput {
   name: string;
@@ -48,13 +43,14 @@ export interface VisitInput {
   discount: string;
   paymentTiming: "NOW" | "LATER";
   amountPaid: string;
-  paymentMethod?: PaymentMethod | undefined;
+  paymentMethod?: CanonicalPaymentMethod | undefined;
+  paymentReference?: string | undefined;
   clinicalNotes?: string | undefined;
 }
 
 export interface LabPaymentInput {
   amount: string;
-  method: PaymentMethod;
+  method: CanonicalPaymentMethod;
   externalReference?: string | undefined;
   notes?: string | undefined;
   idempotencyKey: string;
@@ -422,6 +418,7 @@ export class LabService {
             visitId: visit.id,
             amount: formatMoney(paid),
             method: input.paymentMethod,
+            externalReference: text(input.paymentReference),
             idempotencyKey: `lab-visit-initial:${visit.id}`,
             collectedByMembershipId: principal.membershipId,
             collectedByUserId: principal.userId,
