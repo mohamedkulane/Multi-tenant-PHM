@@ -25,6 +25,11 @@ enum ClinicVisitStatus {
   RESULTS_READY
   LAB_RESULTS_READY
   DOCTOR_REVIEW
+  // Legacy values are read-only compatibility for visits created before
+  // digital prescriptions were removed from the clinical workflow.
+  PRESCRIPTION_CREATED
+  PRESCRIPTION_READY
+  AT_PHARMACY
   COMPLETED
   CANCELLED
 }
