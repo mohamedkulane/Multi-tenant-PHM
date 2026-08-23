@@ -9,6 +9,7 @@ import type {
   ChangePasswordInput,
   LoginInput,
   UpdateProfileInput,
+  SecurityAuditInput,
 } from "./auth.types.js";
 import { hashPassword, verifyPassword } from "./password.js";
 import { createSessionToken, hashSessionSecret, parseSessionToken } from "./session-token.js";
@@ -407,7 +408,7 @@ export class PrismaAuthService implements AuthService {
         where: { id: principal.userId },
         data: { passwordHash, tokenVersion: { increment: 1 } },
       });
-      await transaction.session.updateMany({
+      const revokedSessions = await transaction.session.updateMany({
         where: {
           userId: principal.userId,
           id: { not: principal.sessionId },
@@ -420,12 +421,58 @@ export class PrismaAuthService implements AuthService {
           tenantId: principal.tenantId,
           actorUserId: principal.userId,
           actorMembershipId: principal.membershipId,
-          action: "ACCOUNT_PASSWORD_CHANGED",
+          action: "PASSWORD_CHANGED",
           entityType: "user",
           entityId: principal.userId,
+          metadata: { revokedSessionCount: revokedSessions.count },
         },
       });
       return { changed: true as const };
+    });
+  }
+  async recordSecurityEvent(input: SecurityAuditInput) {
+    const tenantId =
+      input.principal?.tenantId ??
+      (
+        await prisma.tenantLoginDirectory.findUnique({
+          where: { slug: normalizeLoginName(input.tenantSlug ?? "") },
+          select: { tenantId: true },
+        })
+      )?.tenantId;
+    if (!tenantId) return;
+
+    await withTenantContext(prisma, { tenantId }, async (transaction) => {
+      const membership = input.principal
+        ? null
+        : await transaction.tenantMembership.findUnique({
+            where: {
+              tenantId_username: {
+                tenantId,
+                username: normalizeLoginName(input.username ?? ""),
+              },
+            },
+            select: { id: true, userId: true },
+          });
+      const actorUserId = input.principal?.userId ?? membership?.userId;
+      const actorMembershipId = input.principal?.membershipId ?? membership?.id;
+      await setTransactionContext(transaction, {
+        tenantId,
+        ...(actorUserId ? { userId: actorUserId } : {}),
+        ...(actorMembershipId ? { membershipId: actorMembershipId } : {}),
+      });
+      await transaction.auditLog.create({
+        data: {
+          tenantId,
+          ...(actorUserId ? { actorUserId } : {}),
+          ...(actorMembershipId ? { actorMembershipId } : {}),
+          action: input.action,
+          entityType: "security_event",
+          entityId: input.principal?.sessionId ?? null,
+          metadata: input.metadata ?? {},
+          ...(input.ipAddress ? { ipAddress: input.ipAddress } : {}),
+          ...(input.userAgent ? { userAgent: input.userAgent.slice(0, 512) } : {}),
+        },
+      });
     });
   }
 }

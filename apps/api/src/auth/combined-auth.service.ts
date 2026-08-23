@@ -10,6 +10,7 @@ import type {
   LoginInput,
   LoginResult,
   UpdateProfileInput,
+  SecurityAuditInput,
 } from "./auth.types.js";
 import { AppError } from "../errors/app-error.js";
 
@@ -46,6 +47,10 @@ export class CombinedAuthService implements AuthService {
   changePassword(principal: AuthenticatedPrincipal, input: ChangePasswordInput) {
     this.requireWritableTenantSession(principal);
     return this.tenantAuth.changePassword(principal, input);
+  }
+
+  recordSecurityEvent(input: SecurityAuditInput) {
+    return this.tenantAuth.recordSecurityEvent?.(input) ?? Promise.resolve();
   }
 
   private requireWritableTenantSession(principal: AuthenticatedPrincipal) {

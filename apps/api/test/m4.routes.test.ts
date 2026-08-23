@@ -160,7 +160,7 @@ describe("M4 API routes", () => {
         code: "UNSUPPORTED_PAYMENT_METHOD",
         message: "Unsupported payment method. Choose EVC-Plus, E-Dahab, or Salaam Bank.",
       });
-      expect(sales.addPayment.mock.calls).toHaveLength(0);
+      expect(sales.addPayment).not.toHaveBeenCalled();
     },
   );
 

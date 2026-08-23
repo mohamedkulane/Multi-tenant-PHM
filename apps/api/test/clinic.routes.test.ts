@@ -179,6 +179,8 @@ describe("clinic workflow routes", () => {
         symptoms: ["Fever", "Weakness"],
         vitalSigns: { temperature: 38.5, pulse: 96 },
         physicalExamination: { generalAppearance: "Unwell" },
+        medicationStatus: "UNKNOWN",
+        allergyStatus: "UNKNOWN",
         provisionalDiagnosis: "Suspected malaria",
       });
     const labOrder = await request(app)
@@ -196,7 +198,7 @@ describe("clinic workflow routes", () => {
     const completed = await request(app)
       .post(`${visitPath}/complete-review`)
       .set("Cookie", "phms_session=test")
-      .send({});
+      .send({ disposition: "DISCHARGED", diagnosticOutcome: "FINAL_DIAGNOSIS" });
 
     expect([assessment.status, labOrder.status, diagnosis.status, completed.status]).toEqual([
       200, 201, 200, 200,
@@ -223,6 +225,7 @@ describe("clinic workflow routes", () => {
     expect(completeDoctorReview).toHaveBeenCalledWith(
       principal,
       expect.any(String),
+      expect.objectContaining({ disposition: "DISCHARGED" }),
       expect.any(String),
     );
   });
@@ -241,7 +244,7 @@ describe("clinic workflow routes", () => {
     const response = await request(createApp({ authentication: authentication(principal), clinic }))
       .post("/api/v1/clinic/visits/10000000-0000-4000-8000-000000000006/complete-review")
       .set("Cookie", "phms_session=test")
-      .send({});
+      .send({ disposition: "DISCHARGED", diagnosticOutcome: "FINAL_DIAGNOSIS" });
 
     expect(response.status).toBe(200);
     expect(completeDoctorReview).toHaveBeenCalledOnce();
@@ -275,7 +278,7 @@ describe("clinic workflow routes", () => {
         samples: [
           {
             visitTestId: "40000000-0000-4000-8000-000000000001",
-            sampleId: "SMP-2026-001",
+            sampleCondition: "ACCEPTABLE",
             sampleNotes: "EDTA tube",
           },
         ],
@@ -290,7 +293,7 @@ describe("clinic workflow routes", () => {
         samples: [
           {
             visitTestId: "40000000-0000-4000-8000-000000000001",
-            sampleId: "SMP-2026-001",
+            sampleCondition: "ACCEPTABLE",
             sampleNotes: "EDTA tube",
           },
         ],

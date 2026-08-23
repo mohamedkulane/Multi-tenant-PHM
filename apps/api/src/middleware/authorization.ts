@@ -9,7 +9,9 @@ const supportReadPermissions = new Set<Permission>([
   "customer.read",
   "supplier.read",
   "clinic.read",
-  "lab.read",
+  "lab.order.read",
+  "lab.catalog.read",
+  "lab.result.read",
   "inventory.read",
   "expense.read",
   "report.read",
@@ -21,6 +23,28 @@ export function requirePermission(permission: Permission): RequestHandler {
     const permitted = request.auth?.isSupportSession
       ? supportReadPermissions.has(permission)
       : Boolean(request.auth && roleHasPermission(request.auth.role, permission));
+    if (!request.auth || !permitted) {
+      next(
+        new AppError({
+          statusCode: 403,
+          code: "PERMISSION_DENIED",
+          message: "You do not have permission to perform this action",
+        }),
+      );
+      return;
+    }
+    next();
+  };
+}
+
+export function requireAnyPermission(...requested: Permission[]): RequestHandler {
+  return (request, _response, next) => {
+    const permitted = request.auth?.isSupportSession
+      ? requested.some((permission) => supportReadPermissions.has(permission))
+      : Boolean(
+          request.auth &&
+          requested.some((permission) => roleHasPermission(request.auth!.role, permission)),
+        );
     if (!request.auth || !permitted) {
       next(
         new AppError({

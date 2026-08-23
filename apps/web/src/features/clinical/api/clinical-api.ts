@@ -12,6 +12,6 @@ export const clinicalApi = {
     sendData<ClinicalRow>("post", `/clinic/visits/${visitId}/lab-orders`, body),
   saveFinalDiagnoses: (visitId: string, diagnoses: Array<{ description: string }>) =>
     sendData<ClinicalRow>("put", `/clinic/visits/${visitId}/diagnoses/FINAL`, { diagnoses }),
-  completeDoctorReview: (visitId: string) =>
-    sendData<ClinicalRow>("post", `/clinic/visits/${visitId}/complete-review`),
+  completeDoctorReview: (visitId: string, input: Record<string, unknown>) =>
+    sendData<ClinicalRow>("post", `/clinic/visits/${visitId}/complete-review`, input),
 };

@@ -40,7 +40,11 @@ type Assessment = {
   pastMedicalHistory: string;
   pastSurgicalHistory: string;
   currentMedicines: string;
+  medicationStatus: string;
   allergies: string;
+  allergyStatus: string;
+  noSignificantMedicalHistory: boolean;
+  noPastSurgery: boolean;
   symptoms: string;
   examinationNotes: string;
   provisionalDiagnosis: string;
@@ -53,7 +57,11 @@ const blank: Assessment = {
   pastMedicalHistory: "",
   pastSurgicalHistory: "",
   currentMedicines: "",
+  medicationStatus: "UNKNOWN",
   allergies: "",
+  allergyStatus: "UNKNOWN",
+  noSignificantMedicalHistory: false,
+  noPastSurgery: false,
   symptoms: "",
   examinationNotes: "",
   provisionalDiagnosis: "",
@@ -79,6 +87,14 @@ export function ClinicalVisitPage({
   const [priority, setPriority] = useState("ROUTINE");
   const [labNotes, setLabNotes] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
+  const [disposition, setDisposition] = useState("DISCHARGED");
+  const [diagnosticOutcome, setDiagnosticOutcome] = useState("FINAL_DIAGNOSIS");
+  const [followUpDate, setFollowUpDate] = useState("");
+  const [followUpInstructions, setFollowUpInstructions] = useState("");
+  const [referralDestination, setReferralDestination] = useState("");
+  const [referralReason, setReferralReason] = useState("");
+  const [transferReason, setTransferReason] = useState("");
+  const [dispositionNotes, setDispositionNotes] = useState("");
   const visit = useQuery({
     queryKey: clinicalKeys.visit(visitId),
     queryFn: () => clinicalApi.visit(visitId),
@@ -103,7 +119,11 @@ export function ClinicalVisitPage({
       pastMedicalHistory: clinicalText(saved["pastMedicalHistory"], ""),
       pastSurgicalHistory: clinicalText(saved["pastSurgicalHistory"], ""),
       currentMedicines: clinicalText(saved["currentMedicines"], ""),
+      medicationStatus: clinicalText(saved["medicationStatus"], "UNKNOWN"),
       allergies: clinicalText(saved["allergies"], ""),
+      allergyStatus: clinicalText(saved["allergyStatus"], "UNKNOWN"),
+      noSignificantMedicalHistory: saved["noSignificantMedicalHistory"] === true,
+      noPastSurgery: saved["noPastSurgery"] === true,
       symptoms: clinicalRows(saved["symptoms"]).map(String).join(", "),
       examinationNotes: clinicalText(saved["examinationNotes"], ""),
       provisionalDiagnosis: clinicalText(saved["provisionalDiagnosis"], ""),
@@ -185,7 +205,17 @@ export function ClinicalVisitPage({
       showToast({ title: "Diagnosis not saved", message: errorMessage(error), tone: "error" }),
   });
   const complete = useMutation({
-    mutationFn: () => clinicalApi.completeDoctorReview(visitId),
+    mutationFn: () =>
+      clinicalApi.completeDoctorReview(visitId, {
+        disposition,
+        diagnosticOutcome,
+        followUpDate: followUpDate || undefined,
+        followUpInstructions: followUpInstructions || undefined,
+        referralDestination: referralDestination || undefined,
+        referralReason: referralReason || undefined,
+        transferReason: transferReason || undefined,
+        dispositionNotes: dispositionNotes || undefined,
+      }),
     onSuccess: async () => {
       showToast({
         title: "Doctor review completed",
@@ -267,16 +297,81 @@ export function ClinicalVisitPage({
               value={assessment.pastSurgicalHistory}
               onChange={(value) => setAssessment({ ...assessment, pastSurgicalHistory: value })}
             />
-            <TextArea
-              label="Current medicines"
-              value={assessment.currentMedicines}
-              onChange={(value) => setAssessment({ ...assessment, currentMedicines: value })}
-            />
-            <TextArea
-              label="Allergies"
-              value={assessment.allergies}
-              onChange={(value) => setAssessment({ ...assessment, allergies: value })}
-            />
+            <Field label="Medication status *">
+              <select
+                value={assessment.medicationStatus}
+                onChange={(event) =>
+                  setAssessment({
+                    ...assessment,
+                    medicationStatus: event.target.value,
+                    currentMedicines:
+                      event.target.value === "TAKING_MEDICATION" ? assessment.currentMedicines : "",
+                  })
+                }
+              >
+                <option value="UNKNOWN">Unknown</option>
+                <option value="NONE">No current medicines</option>
+                <option value="TAKING_MEDICATION">Taking medication</option>
+              </select>
+            </Field>
+            {assessment.medicationStatus === "TAKING_MEDICATION" ? (
+              <TextArea
+                label="Current medicines *"
+                value={assessment.currentMedicines}
+                onChange={(value) => setAssessment({ ...assessment, currentMedicines: value })}
+              />
+            ) : null}
+            <Field label="Allergy status *">
+              <select
+                value={assessment.allergyStatus}
+                onChange={(event) =>
+                  setAssessment({
+                    ...assessment,
+                    allergyStatus: event.target.value,
+                    allergies: event.target.value === "HAS_ALLERGIES" ? assessment.allergies : "",
+                  })
+                }
+              >
+                <option value="UNKNOWN">Unknown</option>
+                <option value="NO_KNOWN_ALLERGIES">No known allergies</option>
+                <option value="HAS_ALLERGIES">Has allergies</option>
+              </select>
+            </Field>
+            {assessment.allergyStatus === "HAS_ALLERGIES" ? (
+              <TextArea
+                label="Allergy details *"
+                value={assessment.allergies}
+                onChange={(value) => setAssessment({ ...assessment, allergies: value })}
+              />
+            ) : null}
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={assessment.noSignificantMedicalHistory}
+                onChange={(event) =>
+                  setAssessment({
+                    ...assessment,
+                    noSignificantMedicalHistory: event.target.checked,
+                    pastMedicalHistory: event.target.checked ? "" : assessment.pastMedicalHistory,
+                  })
+                }
+              />{" "}
+              No significant medical history
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={assessment.noPastSurgery}
+                onChange={(event) =>
+                  setAssessment({
+                    ...assessment,
+                    noPastSurgery: event.target.checked,
+                    pastSurgicalHistory: event.target.checked ? "" : assessment.pastSurgicalHistory,
+                  })
+                }
+              />{" "}
+              No past surgery
+            </label>{" "}
           </div>
           <Action
             mutation={save}
@@ -560,6 +655,76 @@ export function ClinicalVisitPage({
                   .map((item) => clinicalText(item["description"]))
                   .join(", ")}
               />
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Diagnostic outcome *">
+                  <select
+                    value={diagnosticOutcome}
+                    onChange={(event) => setDiagnosticOutcome(event.target.value)}
+                  >
+                    <option value="FINAL_DIAGNOSIS">Final diagnosis established</option>
+                    <option value="NO_DEFINITIVE_DIAGNOSIS">No definitive diagnosis</option>
+                    <option value="OBSERVATION">Observation required</option>
+                    <option value="REFERRAL">Diagnosis deferred to referral</option>
+                  </select>
+                </Field>
+                <Field label="Disposition *">
+                  <select
+                    value={disposition}
+                    onChange={(event) => setDisposition(event.target.value)}
+                  >
+                    <option value="DISCHARGED">Discharged</option>
+                    <option value="FOLLOW_UP">Follow-up</option>
+                    <option value="REFERRED">Referred</option>
+                    <option value="ADMITTED">Admitted</option>
+                    <option value="OBSERVATION">Observation</option>
+                    <option value="EMERGENCY_TRANSFER">Emergency transfer</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </Field>
+                {disposition === "FOLLOW_UP" ? (
+                  <>
+                    <Field label="Follow-up date *">
+                      <input
+                        type="date"
+                        value={followUpDate}
+                        onChange={(event) => setFollowUpDate(event.target.value)}
+                      />
+                    </Field>
+                    <TextArea
+                      label="Follow-up instructions *"
+                      value={followUpInstructions}
+                      onChange={setFollowUpInstructions}
+                    />
+                  </>
+                ) : null}
+                {disposition === "REFERRED" ? (
+                  <>
+                    <Field label="Referral destination *">
+                      <input
+                        value={referralDestination}
+                        onChange={(event) => setReferralDestination(event.target.value)}
+                      />
+                    </Field>
+                    <TextArea
+                      label="Referral reason *"
+                      value={referralReason}
+                      onChange={setReferralReason}
+                    />
+                  </>
+                ) : null}
+                {disposition === "EMERGENCY_TRANSFER" ? (
+                  <TextArea
+                    label="Transfer reason *"
+                    value={transferReason}
+                    onChange={setTransferReason}
+                  />
+                ) : null}
+                <TextArea
+                  label="Disposition notes"
+                  value={dispositionNotes}
+                  onChange={setDispositionNotes}
+                />
+              </div>
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                 <strong>Medication is written outside PHMS.</strong>
                 <p className="mt-1">
@@ -570,7 +735,17 @@ export function ClinicalVisitPage({
             </div>
             <Action
               mutation={complete}
-              disabled={!canEdit || complete.isPending || visit.data["status"] === "COMPLETED"}
+              disabled={
+                !canEdit ||
+                complete.isPending ||
+                visit.data["status"] === "COMPLETED" ||
+                (diagnosticOutcome === "FINAL_DIAGNOSIS" &&
+                  !diagnoses.some((item) => item["type"] === "FINAL")) ||
+                (disposition === "FOLLOW_UP" && (!followUpDate || !followUpInstructions.trim())) ||
+                (disposition === "REFERRED" &&
+                  (!referralDestination.trim() || !referralReason.trim())) ||
+                (disposition === "EMERGENCY_TRANSFER" && !transferReason.trim())
+              }
               label={
                 visit.data["status"] === "COMPLETED"
                   ? "Doctor review completed"

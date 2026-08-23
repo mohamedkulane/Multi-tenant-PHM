@@ -57,6 +57,7 @@ import { createProductRouter } from "./routes/product.routes.js";
 import { createReportRouter } from "./routes/report.routes.js";
 import { createSalesRouter } from "./routes/sales.routes.js";
 import { createTenantRouter } from "./routes/tenant.routes.js";
+import { requireTrustedMutationOrigin, trustedWebOrigins } from "./security/trusted-origin.js";
 
 export interface CreateAppOptions {
   readinessCheck?: ReadinessCheck;
@@ -119,12 +120,6 @@ export function createApp(options: CreateAppOptions = {}) {
     }),
   );
   app.use(helmet());
-  const allowedOrigins = new Set(
-    (Array.isArray(env.WEB_ORIGINS) ? env.WEB_ORIGINS : String(env.WEB_ORIGINS).split(","))
-      .map((origin) => origin.trim().replace(/\/$/, ""))
-      .filter(Boolean),
-  );
-
   app.use(
     cors({
       credentials: true,
@@ -136,7 +131,7 @@ export function createApp(options: CreateAppOptions = {}) {
 
         const normalizedOrigin = origin.trim().replace(/\/$/, "");
 
-        if (allowedOrigins.has(normalizedOrigin)) {
+        if (trustedWebOrigins.has(normalizedOrigin)) {
           callback(null, true);
           return;
         }
@@ -144,7 +139,7 @@ export function createApp(options: CreateAppOptions = {}) {
         logger.warn(
           {
             origin: normalizedOrigin,
-            allowedOrigins: [...allowedOrigins],
+            allowedOrigins: [...trustedWebOrigins],
           },
           "CORS origin rejected",
         );
@@ -154,6 +149,7 @@ export function createApp(options: CreateAppOptions = {}) {
     }),
   );
   app.use(express.json({ limit: "1mb" }));
+  app.use(requireTrustedMutationOrigin);
 
   app.get("/api", (_request, response) => {
     const locals = response.locals as ResponseLocals;

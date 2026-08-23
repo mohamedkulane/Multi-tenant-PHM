@@ -29,6 +29,44 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Object.prototype.toString.call(value) === "[object Object]";
 }
 
+function normalizePatientDemographics(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizePatientDemographics);
+  if (!isPlainObject(value)) return value;
+
+  const output = Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [key, normalizePatientDemographics(child)]),
+  ) as Record<string, unknown>;
+  if (typeof output["patientNumber"] !== "string") return output;
+
+  const dateOfBirth = output["dateOfBirth"];
+  const parsedDob =
+    dateOfBirth instanceof Date
+      ? dateOfBirth
+      : typeof dateOfBirth === "string"
+        ? new Date(dateOfBirth)
+        : null;
+  if (parsedDob && Number.isFinite(parsedDob.getTime())) {
+    const today = new Date();
+    let years = today.getUTCFullYear() - parsedDob.getUTCFullYear();
+    const birthdayPassed =
+      today.getUTCMonth() > parsedDob.getUTCMonth() ||
+      (today.getUTCMonth() === parsedDob.getUTCMonth() &&
+        today.getUTCDate() >= parsedDob.getUTCDate());
+    if (!birthdayPassed) years -= 1;
+    output["age"] = Math.max(0, years);
+    output["ageDisplay"] = `${Math.max(0, years)} years`;
+    return output;
+  }
+
+  const estimated = Number(output["estimatedAgeValue"]);
+  const unit = output["estimatedAgeUnit"];
+  if (Number.isInteger(estimated) && estimated >= 0 && typeof unit === "string") {
+    output["age"] =
+      unit === "YEARS" ? estimated : unit === "MONTHS" ? Math.floor(estimated / 12) : 0;
+    output["ageDisplay"] = `${estimated} ${unit.toLowerCase()}`;
+  }
+  return output;
+}
 function redact(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(redact);
   if (!isPlainObject(value)) return value;
@@ -57,6 +95,7 @@ function redact(value: unknown): unknown {
  * and payment history recursively from every clinic/lab response.
  */
 export function presentClinicalData(principal: AuthenticatedPrincipal, value: unknown) {
-  if (!clinicalOnlyRoles.has(principal.role)) return value;
-  return redact(value);
+  const normalized = normalizePatientDemographics(value);
+  if (!clinicalOnlyRoles.has(principal.role)) return normalized;
+  return redact(normalized);
 }

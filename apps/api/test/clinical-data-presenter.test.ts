@@ -54,6 +54,6 @@ describe("clinical financial data presentation", () => {
   );
 
   it("keeps full financial data for Reception", () => {
-    expect(presentClinicalData(principal("RECEPTIONIST"), visit)).toBe(visit);
+    expect(presentClinicalData(principal("RECEPTIONIST"), visit)).toStrictEqual(visit);
   });
 });

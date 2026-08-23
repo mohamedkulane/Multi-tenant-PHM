@@ -1,4 +1,4 @@
-﻿import type { TenantRole } from "@prisma/client";
+import type { TenantRole } from "@prisma/client";
 
 export interface LoginInput {
   tenantSlug: string;
@@ -40,6 +40,16 @@ export interface LoginResult {
   principal: AuthenticatedPrincipal;
 }
 
+export interface SecurityAuditInput {
+  action: string;
+  principal?: AuthenticatedPrincipal;
+  tenantSlug?: string;
+  username?: string;
+  ipAddress?: string;
+  userAgent?: string;
+  metadata?: Record<string, string | number | boolean | null>;
+}
+
 export interface AuthService {
   login(input: LoginInput): Promise<LoginResult>;
   authenticate(rawSessionToken: string | undefined): Promise<AuthenticatedPrincipal | null>;
@@ -52,4 +62,5 @@ export interface AuthService {
     principal: AuthenticatedPrincipal,
     input: ChangePasswordInput,
   ): Promise<{ changed: true }>;
+  recordSecurityEvent?(input: SecurityAuditInput): Promise<void>;
 }

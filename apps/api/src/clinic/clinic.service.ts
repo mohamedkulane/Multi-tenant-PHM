@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import type { DiagnosisType, LabOrderPriority, Prisma } from "@prisma/client";
+import {
+  Prisma,
+  type AllergyStatus,
+  type ClinicalDisposition,
+  type DiagnosisType,
+  type DiagnosticOutcome,
+  type LabOrderPriority,
+  type MedicationStatus,
+} from "@prisma/client";
 import type { AuthenticatedPrincipal } from "../auth/auth.types.js";
 import { prisma } from "../database/prisma.js";
 import { setTransactionContext, withTenantContext } from "../database/tenant-context.js";
@@ -21,7 +29,11 @@ export interface ClinicalAssessmentInput {
   pastMedicalHistory?: string | undefined;
   pastSurgicalHistory?: string | undefined;
   currentMedicines?: string | undefined;
+  medicationStatus: MedicationStatus;
   allergies?: string | undefined;
+  allergyStatus: AllergyStatus;
+  noSignificantMedicalHistory: boolean;
+  noPastSurgery: boolean;
   symptoms: string[];
   vitalSigns: {
     temperature?: number | undefined;
@@ -52,6 +64,16 @@ export interface LabRequestInput {
   priority: LabOrderPriority;
 }
 
+export interface CompleteDoctorReviewInput {
+  disposition: ClinicalDisposition;
+  diagnosticOutcome: DiagnosticOutcome;
+  followUpDate?: Date | undefined;
+  followUpInstructions?: string | undefined;
+  referralDestination?: string | undefined;
+  referralReason?: string | undefined;
+  transferReason?: string | undefined;
+  dispositionNotes?: string | undefined;
+}
 export interface ConsultationPaymentInput {
   method: CanonicalPaymentMethod;
   idempotencyKey: string;
@@ -209,7 +231,9 @@ export class ClinicService {
               id: true,
               patientNumber: true,
               name: true,
-              age: true,
+              dateOfBirth: true,
+              estimatedAgeValue: true,
+              estimatedAgeUnit: true,
               sex: true,
             },
           },
@@ -453,10 +477,10 @@ export class ClinicService {
           include: clinicVisitInclude,
         });
       }
-      await transaction.$queryRawUnsafe(
-        "SELECT id FROM public.clinic_visits WHERE tenant_id = $1::uuid AND id = $2::uuid FOR UPDATE",
-        principal.tenantId,
-        visitId,
+      await transaction.$queryRaw(
+        Prisma.sql`SELECT id FROM public.clinic_visits
+                   WHERE tenant_id = ${principal.tenantId}::uuid AND id = ${visitId}::uuid
+                   FOR UPDATE`,
       );
       const visit = await transaction.clinicVisit.findUnique({
         where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
@@ -573,7 +597,11 @@ export class ClinicService {
           pastMedicalHistory: clean(input.pastMedicalHistory),
           pastSurgicalHistory: clean(input.pastSurgicalHistory),
           currentMedicines: clean(input.currentMedicines),
+          medicationStatus: input.medicationStatus,
           allergies: clean(input.allergies),
+          allergyStatus: input.allergyStatus,
+          noSignificantMedicalHistory: input.noSignificantMedicalHistory,
+          noPastSurgery: input.noPastSurgery,
           symptoms: jsonValue(input.symptoms),
           vitalSigns: jsonValue(input.vitalSigns),
           physicalExamination: jsonValue(input.physicalExamination),
@@ -588,7 +616,11 @@ export class ClinicService {
           pastMedicalHistory: clean(input.pastMedicalHistory),
           pastSurgicalHistory: clean(input.pastSurgicalHistory),
           currentMedicines: clean(input.currentMedicines),
+          medicationStatus: input.medicationStatus,
           allergies: clean(input.allergies),
+          allergyStatus: input.allergyStatus,
+          noSignificantMedicalHistory: input.noSignificantMedicalHistory,
+          noPastSurgery: input.noPastSurgery,
           symptoms: jsonValue(input.symptoms),
           vitalSigns: jsonValue(input.vitalSigns),
           physicalExamination: jsonValue(input.physicalExamination),
@@ -834,6 +866,7 @@ export class ClinicService {
   async completeDoctorReview(
     principal: AuthenticatedPrincipal,
     visitId: string,
+    input: CompleteDoctorReviewInput,
     requestId?: string,
   ) {
     return prisma.$transaction(async (transaction) => {
@@ -874,11 +907,36 @@ export class ClinicService {
           code: "LAB_RESULTS_PENDING",
           message: "All requested laboratory results must be completed before doctor review",
         });
-      if (!visit.diagnoses.some((diagnosis) => diagnosis.type === "FINAL"))
+      if (
+        input.diagnosticOutcome === "FINAL_DIAGNOSIS" &&
+        !visit.diagnoses.some((diagnosis) => diagnosis.type === "FINAL")
+      )
         throw new AppError({
           statusCode: 409,
           code: "FINAL_DIAGNOSIS_REQUIRED",
-          message: "Record at least one final diagnosis before completing the doctor review",
+          message:
+            "Record at least one final diagnosis or choose a structured no-diagnosis outcome.",
+        });
+      if (input.disposition === "FOLLOW_UP" && !input.followUpDate)
+        throw new AppError({
+          statusCode: 400,
+          code: "FOLLOW_UP_DATE_REQUIRED",
+          message: "Follow-up date is required for follow-up disposition.",
+        });
+      if (
+        input.disposition === "REFERRED" &&
+        (!input.referralDestination?.trim() || !input.referralReason?.trim())
+      )
+        throw new AppError({
+          statusCode: 400,
+          code: "REFERRAL_DETAILS_REQUIRED",
+          message: "Referral destination and reason are required.",
+        });
+      if (input.disposition === "EMERGENCY_TRANSFER" && !input.transferReason?.trim())
+        throw new AppError({
+          statusCode: 400,
+          code: "TRANSFER_REASON_REQUIRED",
+          message: "Emergency transfer reason is required.",
         });
       const completed = await transaction.clinicVisit.update({
         where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
@@ -886,6 +944,14 @@ export class ClinicService {
           status: "COMPLETED",
           completedAt: new Date(),
           consultationCompletedAt: visit.consultationCompletedAt ?? new Date(),
+          disposition: input.disposition,
+          diagnosticOutcome: input.diagnosticOutcome,
+          followUpDate: input.followUpDate ?? null,
+          followUpInstructions: clean(input.followUpInstructions),
+          referralDestination: clean(input.referralDestination),
+          referralReason: clean(input.referralReason),
+          transferReason: clean(input.transferReason),
+          dispositionNotes: clean(input.dispositionNotes),
         },
         include: clinicVisitInclude,
       });
@@ -899,7 +965,11 @@ export class ClinicService {
           action: "DOCTOR_REVIEW_COMPLETED",
           entityType: "clinic_visit",
           entityId: visitId,
-          after: { status: "COMPLETED" },
+          after: {
+            status: "COMPLETED",
+            disposition: input.disposition,
+            diagnosticOutcome: input.diagnosticOutcome,
+          },
         },
       });
       return completed;
@@ -939,7 +1009,16 @@ export class ClinicService {
     input: {
       samples: Array<{
         visitTestId: string;
-        sampleId: string;
+        sampleCondition:
+          | "ACCEPTABLE"
+          | "HEMOLYZED"
+          | "CLOTTED"
+          | "INSUFFICIENT"
+          | "CONTAMINATED"
+          | "WRONG_CONTAINER"
+          | "LEAKING"
+          | "OTHER";
+        rejectionReason?: string | undefined;
         sampleNotes?: string | undefined;
       }>;
     },
@@ -973,15 +1052,24 @@ export class ClinicService {
           code: "ALL_LAB_SAMPLES_REQUIRED",
           message: "Record a sample or tube ID for every ordered laboratory test",
         });
+      const hasRejected = input.samples.some((sample) => sample.sampleCondition !== "ACCEPTABLE");
       await Promise.all(
-        lab.tests.map((test) => {
+        lab.tests.map((test, index) => {
           const sample = uniqueSamples.get(test.id)!;
+          const accepted = sample.sampleCondition === "ACCEPTABLE";
           return transaction.labVisitTest.update({
             where: { tenantId_id: { tenantId: principal.tenantId, id: test.id } },
             data: {
-              sampleId: sample.sampleId.trim(),
+              sampleId: accepted
+                ? `SMP-${Date.now().toString(36).toUpperCase()}-${String(index + 1).padStart(2, "0")}`
+                : null,
+              sampleStatus: accepted ? "COLLECTED" : "RECOLLECTION_REQUIRED",
+              sampleCondition: sample.sampleCondition,
+              rejectionReason: accepted
+                ? null
+                : (clean(sample.rejectionReason) ?? "Sample rejected"),
               sampleNotes: clean(sample.sampleNotes),
-              sampleCollectedAt: new Date(),
+              sampleCollectedAt: accepted ? new Date() : null,
               sampleCollectedById: principal.membershipId,
             },
           });
@@ -990,17 +1078,17 @@ export class ClinicService {
       await transaction.labVisit.update({
         where: { tenantId_id: { tenantId: principal.tenantId, id: labVisitId } },
         data: {
-          sampleStatus: "COLLECTED",
-          sampleCollectedAt: new Date(),
+          sampleStatus: hasRejected ? "RECOLLECTION_REQUIRED" : "COLLECTED",
+          sampleCollectedAt: hasRejected ? null : new Date(),
           sampleCollectedById: principal.membershipId,
           sampleId: null,
           sampleNotes: null,
-          status: "RESULTS_PENDING",
+          status: hasRejected ? "REGISTERED" : "RESULTS_PENDING",
         },
       });
       const updated = await transaction.clinicVisit.update({
         where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
-        data: { status: "LAB_IN_PROGRESS" },
+        data: { status: hasRejected ? "WAITING_FOR_SAMPLE" : "LAB_IN_PROGRESS" },
         include: clinicVisitInclude,
       });
       await transaction.auditLog.create({
@@ -1010,10 +1098,10 @@ export class ClinicService {
           actorUserId: principal.userId,
           actorMembershipId: principal.membershipId,
           ...(requestId ? { requestId } : {}),
-          action: "LAB_SAMPLE_COLLECTED",
+          action: hasRejected ? "LAB_SAMPLE_REJECTED" : "LAB_SAMPLE_COLLECTED",
           entityType: "lab_visit",
           entityId: labVisitId,
-          metadata: { sampleCount: uniqueSamples.size },
+          metadata: { sampleCount: uniqueSamples.size, recollectionRequired: hasRejected },
         },
       });
       return updated;

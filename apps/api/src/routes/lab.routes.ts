@@ -46,7 +46,7 @@ const labTestSchema = z.object({
 export function createLabRouter(authentication: AuthService, service: LabService = labService) {
   const router = Router();
   router.use(requireAuthentication(authentication));
-  router.get("/categories", requirePermission("lab.read"), async (req, res) =>
+  router.get("/categories", requirePermission("lab.catalog.read"), async (req, res) =>
     res.json({ data: presentClinicalData(req.auth!, await service.categories(req.auth!)) }),
   );
   router.post("/categories", requirePermission("lab.manage"), async (req, res) =>
@@ -86,37 +86,73 @@ export function createLabRouter(authentication: AuthService, service: LabService
   router.delete("/tests/:testId", requirePermission("lab.manage"), async (req, res) =>
     res.json({ data: await service.archiveTest(req.auth!, uuid.parse(req.params.testId)) }),
   );
-  router.get("/patients", requirePermission("patient.read"), async (req, res) =>
+  router.get("/patients", requirePermission("patient.lab_identity.read"), async (req, res) =>
     res.json({
-      data: await service.patients(
+      data: presentClinicalData(
         req.auth!,
-        z.string().trim().max(100).optional().parse(req.query.q),
+        await service.patients(req.auth!, z.string().trim().max(100).optional().parse(req.query.q)),
       ),
     }),
   );
   router.post("/patients", requirePermission("patient.create"), async (req, res) =>
     res.status(201).json({
-      data: await service.createPatient(
+      data: presentClinicalData(
         req.auth!,
-        z
-          .object({
-            name: z.string().trim().min(2).max(180),
-            age: z.number().int().min(0).max(130),
-            sex: optionalText(20),
-            dateOfBirth: z.coerce.date().optional(),
-            phone: optionalText(40),
-            address: optionalText(500),
-            emergencyContactName: optionalText(180),
-            emergencyContactPhone: optionalText(40),
-            bloodGroup: optionalText(10),
-            allergies: optionalText(2000),
-            notes: optionalText(1000),
-          })
-          .parse(req.body),
+        await service.createPatient(
+          req.auth!,
+          z
+            .object({
+              name: z.string().trim().min(2).max(180),
+              sex: z.string().trim().min(1).max(20),
+              dateOfBirth: z.coerce.date().max(new Date()).optional(),
+              estimatedAgeValue: z.number().int().min(0).max(130).optional(),
+              estimatedAgeUnit: z.enum(["DAYS", "MONTHS", "YEARS"]).optional(),
+              allergyStatus: z
+                .enum(["NO_KNOWN_ALLERGIES", "HAS_ALLERGIES", "UNKNOWN"])
+                .default("UNKNOWN"),
+              phone: optionalText(40),
+              address: optionalText(500),
+              emergencyContactName: optionalText(180),
+              emergencyContactPhone: optionalText(40),
+              bloodGroup: optionalText(10),
+              allergies: optionalText(2000),
+              notes: optionalText(1000),
+            })
+            .superRefine((value, context) => {
+              const hasDob = value.dateOfBirth !== undefined;
+              const hasEstimate =
+                value.estimatedAgeValue !== undefined || value.estimatedAgeUnit !== undefined;
+              if (hasDob === hasEstimate) {
+                context.addIssue({
+                  code: "custom",
+                  path: ["dateOfBirth"],
+                  message: "Either date of birth or estimated age is required, but not both.",
+                });
+              }
+              if (
+                hasEstimate &&
+                (value.estimatedAgeValue === undefined || value.estimatedAgeUnit === undefined)
+              ) {
+                context.addIssue({
+                  code: "custom",
+                  path: ["estimatedAgeValue"],
+                  message: "Estimated age value and unit must be provided together.",
+                });
+              }
+              if (value.allergyStatus === "HAS_ALLERGIES" && !value.allergies?.trim()) {
+                context.addIssue({
+                  code: "custom",
+                  path: ["allergies"],
+                  message: "Allergy details are required when the patient has allergies.",
+                });
+              }
+            })
+            .parse(req.body),
+        ),
       ),
     }),
   );
-  router.get("/visits", requirePermission("lab.read"), async (req, res) =>
+  router.get("/visits", requirePermission("lab.order.read"), async (req, res) =>
     res.json({
       data: presentClinicalData(
         req.auth!,
@@ -124,7 +160,7 @@ export function createLabRouter(authentication: AuthService, service: LabService
       ),
     }),
   );
-  router.get("/visits/:visitId", requirePermission("lab.read"), async (req, res) =>
+  router.get("/visits/:visitId", requirePermission("lab.order.read"), async (req, res) =>
     res.json({
       data: presentClinicalData(
         req.auth!,
@@ -173,7 +209,7 @@ export function createLabRouter(authentication: AuthService, service: LabService
   );
   router.patch(
     "/visits/:visitId/tests/:visitTestId/result",
-    requirePermission("lab.result"),
+    requirePermission("lab.result.create"),
     async (req, res) =>
       res.json({
         data: presentClinicalData(

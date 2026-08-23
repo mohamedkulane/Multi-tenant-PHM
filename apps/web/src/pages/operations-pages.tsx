@@ -770,9 +770,11 @@ export function LabPage({
   const [patientSearch, setPatientSearch] = useState("");
   const [patientForm, setPatientForm] = useState({
     name: "",
-    age: "",
     sex: "",
     dateOfBirth: "",
+    estimatedAgeValue: "",
+    estimatedAgeUnit: "YEARS",
+    allergyStatus: "UNKNOWN",
     phone: "",
     address: "",
     emergencyContactName: "",
@@ -814,7 +816,7 @@ export function LabPage({
     notes: "",
   });
   const [sampleForms, setSampleForms] = useState<
-    Record<string, { sampleId: string; sampleNotes: string }>
+    Record<string, { sampleCondition: string; rejectionReason: string; sampleNotes: string }>
   >({});
   const [resultForms, setResultForms] = useState<
     Record<
@@ -877,25 +879,34 @@ export function LabPage({
   const createPatient = useMutation({
     mutationFn: () =>
       sendData<Row>("post", "/lab/patients", {
-        ...patientForm,
-        age: Number(patientForm.age),
-        sex: patientForm.sex || undefined,
+        name: patientForm.name,
+        sex: patientForm.sex,
         dateOfBirth: patientForm.dateOfBirth || undefined,
+        estimatedAgeValue: patientForm.dateOfBirth
+          ? undefined
+          : Number(patientForm.estimatedAgeValue),
+        estimatedAgeUnit: patientForm.dateOfBirth ? undefined : patientForm.estimatedAgeUnit,
+        allergyStatus: patientForm.allergyStatus,
         phone: patientForm.phone || undefined,
         address: patientForm.address || undefined,
         emergencyContactName: patientForm.emergencyContactName || undefined,
         emergencyContactPhone: patientForm.emergencyContactPhone || undefined,
         bloodGroup: patientForm.bloodGroup || undefined,
-        allergies: patientForm.allergies || undefined,
+        allergies:
+          patientForm.allergyStatus === "HAS_ALLERGIES"
+            ? patientForm.allergies || undefined
+            : undefined,
         notes: patientForm.notes || undefined,
       }),
     onSuccess: async (p) => {
       setPatientOpen(false);
       setPatientForm({
         name: "",
-        age: "",
         sex: "",
         dateOfBirth: "",
+        estimatedAgeValue: "",
+        estimatedAgeUnit: "YEARS",
+        allergyStatus: "UNKNOWN",
         phone: "",
         address: "",
         emergencyContactName: "",
@@ -1079,10 +1090,16 @@ export function LabPage({
         {
           samples: rows(selectedVisit?.["tests"]).map((test) => {
             const testId = text(test["id"]);
-            const form = sampleForms[testId] ?? { sampleId: "", sampleNotes: "" };
+            const form = sampleForms[testId] ?? {
+              sampleCondition: "ACCEPTABLE",
+              rejectionReason: "",
+              sampleNotes: "",
+            };
             return {
               visitTestId: testId,
-              sampleId: form.sampleId,
+              sampleCondition: form.sampleCondition,
+              rejectionReason:
+                form.sampleCondition === "ACCEPTABLE" ? undefined : form.rejectionReason,
               sampleNotes: form.sampleNotes || undefined,
             };
           }),
@@ -1461,20 +1478,38 @@ export function LabPage({
               required
             />
           </Field>
-          <Field label="Da'da (Age)">
-            <input
-              className="input"
-              type="number"
-              min="0"
-              max="130"
-              value={patientForm.age}
-              onChange={(e) => setPatientForm({ ...patientForm, age: e.target.value })}
-              required
-            />
+          <Field label="Estimated age (if DOB is unknown) *">
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <input
+                className="input"
+                type="number"
+                min="0"
+                max="130"
+                disabled={Boolean(patientForm.dateOfBirth)}
+                value={patientForm.estimatedAgeValue}
+                onChange={(e) =>
+                  setPatientForm({ ...patientForm, estimatedAgeValue: e.target.value })
+                }
+                required={!patientForm.dateOfBirth}
+              />
+              <select
+                className="input"
+                disabled={Boolean(patientForm.dateOfBirth)}
+                value={patientForm.estimatedAgeUnit}
+                onChange={(e) =>
+                  setPatientForm({ ...patientForm, estimatedAgeUnit: e.target.value })
+                }
+              >
+                <option value="DAYS">Days</option>
+                <option value="MONTHS">Months</option>
+                <option value="YEARS">Years</option>
+              </select>
+            </div>
           </Field>
-          <Field label="Jinsiga (Sex)">
+          <Field label="Jinsiga (Sex) *">
             <select
               className="input"
+              required
               value={patientForm.sex}
               onChange={(e) => setPatientForm({ ...patientForm, sex: e.target.value })}
             >
@@ -1496,7 +1531,13 @@ export function LabPage({
               className="input"
               type="date"
               value={patientForm.dateOfBirth}
-              onChange={(e) => setPatientForm({ ...patientForm, dateOfBirth: e.target.value })}
+              onChange={(e) =>
+                setPatientForm({
+                  ...patientForm,
+                  dateOfBirth: e.target.value,
+                  estimatedAgeValue: e.target.value ? "" : patientForm.estimatedAgeValue,
+                })
+              }
             />
           </Field>
           <Field label="Address">
@@ -1532,13 +1573,27 @@ export function LabPage({
               onChange={(e) => setPatientForm({ ...patientForm, bloodGroup: e.target.value })}
             />
           </Field>
-          <Field label="Known allergies">
-            <textarea
+          <Field label="Allergy status">
+            <select
               className="input"
-              value={patientForm.allergies}
-              onChange={(e) => setPatientForm({ ...patientForm, allergies: e.target.value })}
-            />
+              value={patientForm.allergyStatus}
+              onChange={(e) => setPatientForm({ ...patientForm, allergyStatus: e.target.value })}
+            >
+              <option value="UNKNOWN">Unknown</option>
+              <option value="NO_KNOWN_ALLERGIES">No known allergies</option>
+              <option value="HAS_ALLERGIES">Has allergies</option>
+            </select>
           </Field>
+          {patientForm.allergyStatus === "HAS_ALLERGIES" ? (
+            <Field label="Allergy details *">
+              <textarea
+                className="input"
+                required
+                value={patientForm.allergies}
+                onChange={(e) => setPatientForm({ ...patientForm, allergies: e.target.value })}
+              />
+            </Field>
+          ) : null}
           <div className="sm:col-span-2">
             <Field label="Faahfaahin (Notes)">
               <textarea
@@ -2060,7 +2115,8 @@ export function LabPage({
                   {visitTests.map((test, index) => {
                     const testId = text(test["id"]);
                     const form = sampleForms[testId] ?? {
-                      sampleId: text(test["sampleId"]),
+                      sampleCondition: text(test["sampleCondition"]) || "ACCEPTABLE",
+                      rejectionReason: text(test["rejectionReason"]),
                       sampleNotes: text(test["sampleNotes"]),
                     };
                     const updateSample = (patch: Partial<typeof form>) =>
@@ -2083,13 +2139,23 @@ export function LabPage({
                           </span>
                         </div>
                         <div className="grid gap-3 md:grid-cols-2">
-                          <Field label="Sample ID / tube number">
-                            <input
-                              className="input"
-                              value={form.sampleId}
-                              onChange={(event) => updateSample({ sampleId: event.target.value })}
+                          <Field label="Sample condition *">
+                            <select
+                              value={form.sampleCondition}
+                              onChange={(event) =>
+                                updateSample({ sampleCondition: event.target.value })
+                              }
                               required
-                            />
+                            >
+                              <option value="ACCEPTABLE">Acceptable</option>
+                              <option value="HEMOLYZED">Hemolyzed</option>
+                              <option value="CLOTTED">Clotted</option>
+                              <option value="INSUFFICIENT">Insufficient</option>
+                              <option value="CONTAMINATED">Contaminated</option>
+                              <option value="LEAKING">Leaking</option>
+                              <option value="WRONG_CONTAINER">Wrong container</option>
+                              <option value="OTHER">Other</option>
+                            </select>
                           </Field>
                           <Field label="Collection notes">
                             <input
@@ -2100,6 +2166,21 @@ export function LabPage({
                               }
                             />
                           </Field>
+                          {form.sampleCondition !== "ACCEPTABLE" ? (
+                            <Field label="Rejection / recollection reason *">
+                              <input
+                                className="input"
+                                value={form.rejectionReason}
+                                onChange={(event) =>
+                                  updateSample({ rejectionReason: event.target.value })
+                                }
+                                required
+                              />
+                            </Field>
+                          ) : null}
+                          <p className="text-xs text-slate-500 md:col-span-2">
+                            Tube/sample ID is generated automatically after confirmation.
+                          </p>{" "}
                         </div>
                       </section>
                     );
@@ -2115,8 +2196,11 @@ export function LabPage({
                     !canCollectSample ||
                     !text(selectedVisit?.["clinicVisitId"]) ||
                     visitTests.some((test) => {
-                      const testId = text(test["id"]);
-                      return !(sampleForms[testId]?.sampleId || text(test["sampleId"])).trim();
+                      const form = sampleForms[text(test["id"])] ?? {
+                        sampleCondition: "ACCEPTABLE",
+                        rejectionReason: "",
+                      };
+                      return form.sampleCondition !== "ACCEPTABLE" && !form.rejectionReason.trim();
                     })
                   }
                 >

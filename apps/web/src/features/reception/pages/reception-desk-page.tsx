@@ -45,9 +45,12 @@ export function ReceptionDeskPage({
   });
   const [patientForm, setPatientForm] = useState({
     name: "",
-    age: "",
     sex: "",
+    dateOfBirth: "",
+    estimatedAgeValue: "",
+    estimatedAgeUnit: "YEARS",
     phone: "",
+    allergyStatus: "UNKNOWN",
     allergies: "",
   });
   const [method, setMethod] = useState(DEFAULT_PAYMENT_METHOD);
@@ -92,14 +95,31 @@ export function ReceptionDeskPage({
     mutationFn: () =>
       sendData<Row>("post", "/lab/patients", {
         name: patientForm.name,
-        age: Number(patientForm.age),
-        sex: patientForm.sex || undefined,
+        sex: patientForm.sex,
+        dateOfBirth: patientForm.dateOfBirth || undefined,
+        estimatedAgeValue: patientForm.dateOfBirth
+          ? undefined
+          : Number(patientForm.estimatedAgeValue),
+        estimatedAgeUnit: patientForm.dateOfBirth ? undefined : patientForm.estimatedAgeUnit,
         phone: patientForm.phone || undefined,
-        allergies: patientForm.allergies || undefined,
+        allergyStatus: patientForm.allergyStatus,
+        allergies:
+          patientForm.allergyStatus === "HAS_ALLERGIES"
+            ? patientForm.allergies || undefined
+            : undefined,
       }),
     onSuccess: async (patient) => {
       setPatientOpen(false);
-      setPatientForm({ name: "", age: "", sex: "", phone: "", allergies: "" });
+      setPatientForm({
+        name: "",
+        sex: "",
+        dateOfBirth: "",
+        estimatedAgeValue: "",
+        estimatedAgeUnit: "YEARS",
+        phone: "",
+        allergyStatus: "UNKNOWN",
+        allergies: "",
+      });
       setVisitForm((current) => ({ ...current, patientId: text(patient["id"]) }));
       await client.invalidateQueries({ queryKey: ["reception-patients"] });
       setVisitOpen(true);
@@ -325,49 +345,105 @@ export function ReceptionDeskPage({
             createPatient.mutate();
           }}
         >
-          <Field label="Patient name">
+          <Field label="Patient name *">
             <input
               required
               value={patientForm.name}
               onChange={(event) => setPatientForm({ ...patientForm, name: event.target.value })}
             />
           </Field>
-          <Field label="Age">
-            <input
-              required
-              type="number"
-              min="0"
-              max="130"
-              value={patientForm.age}
-              onChange={(event) => setPatientForm({ ...patientForm, age: event.target.value })}
-            />
-          </Field>
-          <Field label="Sex">
+          <Field label="Sex *">
             <select
+              required
               value={patientForm.sex}
               onChange={(event) => setPatientForm({ ...patientForm, sex: event.target.value })}
             >
-              <option value="">Not specified</option>
-              <option>Male</option>
-              <option>Female</option>
+              <option value="">Choose sex</option>
+              <option value="MALE">Male</option>
+              <option value="FEMALE">Female</option>
+              <option value="OTHER">Other</option>
             </select>
           </Field>
-          <Field label="Phone">
+          <Field label="Date of birth">
             <input
-              value={patientForm.phone}
-              onChange={(event) => setPatientForm({ ...patientForm, phone: event.target.value })}
+              type="date"
+              max={new Date().toISOString().slice(0, 10)}
+              value={patientForm.dateOfBirth}
+              onChange={(event) =>
+                setPatientForm({
+                  ...patientForm,
+                  dateOfBirth: event.target.value,
+                  estimatedAgeValue: event.target.value ? "" : patientForm.estimatedAgeValue,
+                })
+              }
             />
           </Field>
-          <div className="sm:col-span-2">
-            <Field label="Known allergies">
-              <textarea
-                value={patientForm.allergies}
+          <Field label="Estimated age (when DOB is unknown) *">
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <input
+                required={!patientForm.dateOfBirth}
+                disabled={Boolean(patientForm.dateOfBirth)}
+                type="number"
+                min="0"
+                max="130"
+                value={patientForm.estimatedAgeValue}
                 onChange={(event) =>
-                  setPatientForm({ ...patientForm, allergies: event.target.value })
+                  setPatientForm({ ...patientForm, estimatedAgeValue: event.target.value })
                 }
               />
-            </Field>
-          </div>
+              <select
+                disabled={Boolean(patientForm.dateOfBirth)}
+                value={patientForm.estimatedAgeUnit}
+                onChange={(event) =>
+                  setPatientForm({ ...patientForm, estimatedAgeUnit: event.target.value })
+                }
+              >
+                <option value="DAYS">Days</option>
+                <option value="MONTHS">Months</option>
+                <option value="YEARS">Years</option>
+              </select>
+            </div>
+          </Field>
+          <details className="rounded-xl border border-slate-200 p-4 sm:col-span-2">
+            <summary className="cursor-pointer font-semibold text-slate-800">
+              + Additional information
+            </summary>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <Field label="Phone (optional)">
+                <input
+                  value={patientForm.phone}
+                  onChange={(event) =>
+                    setPatientForm({ ...patientForm, phone: event.target.value })
+                  }
+                />
+              </Field>
+              <Field label="Allergy status">
+                <select
+                  value={patientForm.allergyStatus}
+                  onChange={(event) =>
+                    setPatientForm({ ...patientForm, allergyStatus: event.target.value })
+                  }
+                >
+                  <option value="UNKNOWN">Unknown</option>
+                  <option value="NO_KNOWN_ALLERGIES">No known allergies</option>
+                  <option value="HAS_ALLERGIES">Has allergies</option>
+                </select>
+              </Field>
+              {patientForm.allergyStatus === "HAS_ALLERGIES" ? (
+                <div className="sm:col-span-2">
+                  <Field label="Allergy details *">
+                    <textarea
+                      required
+                      value={patientForm.allergies}
+                      onChange={(event) =>
+                        setPatientForm({ ...patientForm, allergies: event.target.value })
+                      }
+                    />
+                  </Field>
+                </div>
+              ) : null}
+            </div>
+          </details>
           <button className="btn-primary sm:col-span-2" disabled={createPatient.isPending}>
             Save patient
           </button>

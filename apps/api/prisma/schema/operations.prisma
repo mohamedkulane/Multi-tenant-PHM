@@ -1,3 +1,15 @@
+enum EstimatedAgeUnit {
+  DAYS
+  MONTHS
+  YEARS
+}
+
+enum AllergyStatus {
+  NO_KNOWN_ALLERGIES
+  HAS_ALLERGIES
+  UNKNOWN
+}
+
 enum LabVisitStatus {
   REGISTERED
   RESULTS_PENDING
@@ -42,6 +54,48 @@ enum ConsultationPaymentStatus {
 enum SampleStatus {
   NOT_COLLECTED
   COLLECTED
+  REJECTED
+  RECOLLECTION_REQUIRED
+}
+
+enum SampleCondition {
+  ACCEPTABLE
+  HEMOLYZED
+  CLOTTED
+  INSUFFICIENT
+  CONTAMINATED
+  LEAKING
+  WRONG_CONTAINER
+  OTHER
+}
+
+enum LabSensitivity {
+  NORMAL
+  SENSITIVE
+  RESTRICTED
+}
+
+enum MedicationStatus {
+  NONE
+  TAKING_MEDICATION
+  UNKNOWN
+}
+
+enum ClinicalDisposition {
+  DISCHARGED
+  FOLLOW_UP
+  REFERRED
+  ADMITTED
+  OBSERVATION
+  EMERGENCY_TRANSFER
+  OTHER
+}
+
+enum DiagnosticOutcome {
+  FINAL_DIAGNOSIS
+  NO_DEFINITIVE_DIAGNOSIS
+  OBSERVATION
+  REFERRAL
 }
 
 enum LabResultType {
@@ -143,22 +197,23 @@ model LabCategory {
 }
 
 model LabTest {
-  id              String        @id @default(uuid()) @db.Uuid
-  tenantId        String        @map("tenant_id") @db.Uuid
-  categoryId      String        @map("category_id") @db.Uuid
-  code            String        @db.VarChar(40)
-  name            String        @db.VarChar(180)
-  description     String?       @db.VarChar(1000)
-  price           Decimal       @db.Decimal(19, 4)
-  sampleType      String?       @map("sample_type") @db.VarChar(80)
-  resultType      LabResultType @default(POSITIVE_NEGATIVE) @map("result_type")
-  unit            String?       @db.VarChar(80)
-  referenceRange  String?       @map("reference_range") @db.VarChar(180)
-  resultOptions   Json?         @map("result_options")
-  panelComponents Json?         @map("panel_components")
-  active          Boolean       @default(true)
-  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id              String         @id @default(uuid()) @db.Uuid
+  tenantId        String         @map("tenant_id") @db.Uuid
+  categoryId      String         @map("category_id") @db.Uuid
+  code            String         @db.VarChar(40)
+  name            String         @db.VarChar(180)
+  description     String?        @db.VarChar(1000)
+  price           Decimal        @db.Decimal(19, 4)
+  sampleType      String?        @map("sample_type") @db.VarChar(80)
+  resultType      LabResultType  @default(POSITIVE_NEGATIVE) @map("result_type")
+  sensitivity     LabSensitivity @default(NORMAL)
+  unit            String?        @db.VarChar(80)
+  referenceRange  String?        @map("reference_range") @db.VarChar(180)
+  resultOptions   Json?          @map("result_options")
+  panelComponents Json?          @map("panel_components")
+  active          Boolean        @default(true)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   category   LabCategory    @relation(fields: [tenantId, categoryId], references: [tenantId, id], onDelete: Restrict)
   visitTests LabVisitTest[]
@@ -171,22 +226,24 @@ model LabTest {
 }
 
 model Patient {
-  id                    String    @id @default(uuid()) @db.Uuid
-  tenantId              String    @map("tenant_id") @db.Uuid
-  patientNumber         String    @map("patient_number") @db.VarChar(40)
-  name                  String    @db.VarChar(180)
-  age                   Int
-  sex                   String?   @db.VarChar(20)
-  dateOfBirth           DateTime? @map("date_of_birth") @db.Date
-  phone                 String?   @db.VarChar(40)
-  address               String?   @db.VarChar(500)
-  emergencyContactName  String?   @map("emergency_contact_name") @db.VarChar(180)
-  emergencyContactPhone String?   @map("emergency_contact_phone") @db.VarChar(40)
-  bloodGroup            String?   @map("blood_group") @db.VarChar(10)
-  allergies             String?   @db.VarChar(2000)
-  notes                 String?   @db.VarChar(1000)
-  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                    String            @id @default(uuid()) @db.Uuid
+  tenantId              String            @map("tenant_id") @db.Uuid
+  patientNumber         String            @map("patient_number") @db.VarChar(40)
+  name                  String            @db.VarChar(180)
+  sex                   String            @db.VarChar(20)
+  dateOfBirth           DateTime?         @map("date_of_birth") @db.Date
+  estimatedAgeValue     Int?              @map("estimated_age_value")
+  estimatedAgeUnit      EstimatedAgeUnit? @map("estimated_age_unit")
+  phone                 String?           @db.VarChar(40)
+  address               String?           @db.VarChar(500)
+  emergencyContactName  String?           @map("emergency_contact_name") @db.VarChar(180)
+  emergencyContactPhone String?           @map("emergency_contact_phone") @db.VarChar(40)
+  bloodGroup            String?           @map("blood_group") @db.VarChar(10)
+  allergyStatus         AllergyStatus     @default(UNKNOWN) @map("allergy_status")
+  allergies             String?           @db.VarChar(2000)
+  notes                 String?           @db.VarChar(1000)
+  createdAt             DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   visits           LabVisit[]
   clinicVisits     ClinicVisit[]
@@ -278,6 +335,9 @@ model LabVisitTest {
   sampleType           String?            @map("sample_type") @db.VarChar(80)
   sampleId             String?            @map("sample_id") @db.VarChar(80)
   sampleNotes          String?            @map("sample_notes") @db.VarChar(1000)
+  sampleStatus         SampleStatus       @default(NOT_COLLECTED) @map("sample_status")
+  sampleCondition      SampleCondition?   @map("sample_condition")
+  rejectionReason      String?            @map("rejection_reason") @db.VarChar(1000)
   sampleCollectedAt    DateTime?          @map("sample_collected_at") @db.Timestamptz(3)
   sampleCollectedById  String?            @map("sample_collected_by_membership_id") @db.Uuid
   interpretation       LabInterpretation?
@@ -286,13 +346,31 @@ model LabVisitTest {
   markedAt             DateTime?          @map("marked_at") @db.Timestamptz(3)
   markedByMembershipId String?            @map("marked_by_membership_id") @db.Uuid
 
-  visit   LabVisit @relation(fields: [tenantId, visitId], references: [tenantId, id], onDelete: Restrict)
-  labTest LabTest  @relation(fields: [tenantId, labTestId], references: [tenantId, id], onDelete: Restrict)
+  visit      LabVisit             @relation(fields: [tenantId, visitId], references: [tenantId, id], onDelete: Restrict)
+  labTest    LabTest              @relation(fields: [tenantId, labTestId], references: [tenantId, id], onDelete: Restrict)
+  amendments LabResultAmendment[]
 
   @@unique([tenantId, id])
   @@unique([tenantId, visitId, labTestId])
   @@index([tenantId, visitId])
   @@map("lab_visit_tests")
+}
+
+model LabResultAmendment {
+  id                    String   @id @default(uuid()) @db.Uuid
+  tenantId              String   @map("tenant_id") @db.Uuid
+  visitTestId           String   @map("visit_test_id") @db.Uuid
+  originalResult        Json     @map("original_result")
+  amendedResult         Json     @map("amended_result")
+  reason                String   @db.VarChar(1000)
+  amendedByMembershipId String   @map("amended_by_membership_id") @db.Uuid
+  amendedAt             DateTime @default(now()) @map("amended_at") @db.Timestamptz(3)
+
+  visitTest LabVisitTest @relation(fields: [tenantId, visitTestId], references: [tenantId, id], onDelete: Restrict)
+
+  @@unique([tenantId, id])
+  @@index([tenantId, visitTestId, amendedAt])
+  @@map("lab_result_amendments")
 }
 
 model ClinicVisit {
@@ -316,6 +394,14 @@ model ClinicVisit {
   registeredByMembershipId   String                    @map("registered_by_membership_id") @db.Uuid
   consultationCompletedAt    DateTime?                 @map("consultation_completed_at") @db.Timestamptz(3)
   completedAt                DateTime?                 @map("completed_at") @db.Timestamptz(3)
+  disposition                ClinicalDisposition?
+  diagnosticOutcome          DiagnosticOutcome?        @map("diagnostic_outcome")
+  followUpDate               DateTime?                 @map("follow_up_date") @db.Date
+  followUpInstructions       String?                   @map("follow_up_instructions") @db.VarChar(3000)
+  referralDestination        String?                   @map("referral_destination") @db.VarChar(300)
+  referralReason             String?                   @map("referral_reason") @db.VarChar(3000)
+  transferReason             String?                   @map("transfer_reason") @db.VarChar(3000)
+  dispositionNotes           String?                   @map("disposition_notes") @db.VarChar(3000)
   createdAt                  DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                  DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -334,26 +420,30 @@ model ClinicVisit {
 }
 
 model ClinicalAssessment {
-  id                    String    @id @default(uuid()) @db.Uuid
-  tenantId              String    @map("tenant_id") @db.Uuid
-  clinicVisitId         String    @map("clinic_visit_id") @db.Uuid
-  chiefComplaint        String    @map("chief_complaint") @db.VarChar(2000)
-  historyPresentIllness String?   @map("history_present_illness") @db.VarChar(6000)
-  pastMedicalHistory    String?   @map("past_medical_history") @db.VarChar(4000)
-  pastSurgicalHistory   String?   @map("past_surgical_history") @db.VarChar(4000)
-  currentMedicines      String?   @map("current_medicines") @db.VarChar(4000)
-  allergies             String?   @db.VarChar(4000)
-  symptoms              Json      @default("[]")
-  vitalSigns            Json      @default("{}") @map("vital_signs")
-  physicalExamination   Json      @default("{}") @map("physical_examination")
-  examinationNotes      String?   @map("examination_notes") @db.VarChar(6000)
-  provisionalDiagnosis  String?   @map("provisional_diagnosis") @db.VarChar(3000)
-  createdByMembershipId String    @map("created_by_membership_id") @db.Uuid
-  updatedByMembershipId String    @map("updated_by_membership_id") @db.Uuid
-  startedAt             DateTime  @default(now()) @map("started_at") @db.Timestamptz(3)
-  completedAt           DateTime? @map("completed_at") @db.Timestamptz(3)
-  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                          String           @id @default(uuid()) @db.Uuid
+  tenantId                    String           @map("tenant_id") @db.Uuid
+  clinicVisitId               String           @map("clinic_visit_id") @db.Uuid
+  chiefComplaint              String           @map("chief_complaint") @db.VarChar(2000)
+  historyPresentIllness       String?          @map("history_present_illness") @db.VarChar(6000)
+  pastMedicalHistory          String?          @map("past_medical_history") @db.VarChar(4000)
+  pastSurgicalHistory         String?          @map("past_surgical_history") @db.VarChar(4000)
+  currentMedicines            String?          @map("current_medicines") @db.VarChar(4000)
+  medicationStatus            MedicationStatus @default(UNKNOWN) @map("medication_status")
+  allergyStatus               AllergyStatus    @default(UNKNOWN) @map("allergy_status")
+  allergies                   String?          @db.VarChar(4000)
+  noSignificantMedicalHistory Boolean          @default(false) @map("no_significant_medical_history")
+  noPastSurgery               Boolean          @default(false) @map("no_past_surgery")
+  symptoms                    Json             @default("[]")
+  vitalSigns                  Json             @default("{}") @map("vital_signs")
+  physicalExamination         Json             @default("{}") @map("physical_examination")
+  examinationNotes            String?          @map("examination_notes") @db.VarChar(6000)
+  provisionalDiagnosis        String?          @map("provisional_diagnosis") @db.VarChar(3000)
+  createdByMembershipId       String           @map("created_by_membership_id") @db.Uuid
+  updatedByMembershipId       String           @map("updated_by_membership_id") @db.Uuid
+  startedAt                   DateTime         @default(now()) @map("started_at") @db.Timestamptz(3)
+  completedAt                 DateTime?        @map("completed_at") @db.Timestamptz(3)
+  createdAt                   DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   clinicVisit ClinicVisit @relation(fields: [tenantId, clinicVisitId], references: [tenantId, id], onDelete: Restrict)
 

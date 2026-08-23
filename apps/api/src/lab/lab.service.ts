@@ -1,5 +1,12 @@
 import { randomUUID } from "node:crypto";
-import type { LabInterpretation, LabResultStatus, LabResultType, Prisma } from "@prisma/client";
+import {
+  Prisma,
+  type AllergyStatus,
+  type EstimatedAgeUnit,
+  type LabInterpretation,
+  type LabResultStatus,
+  type LabResultType,
+} from "@prisma/client";
 import type { AuthenticatedPrincipal } from "../auth/auth.types.js";
 import { prisma } from "../database/prisma.js";
 import { setTransactionContext, withTenantContext } from "../database/tenant-context.js";
@@ -10,9 +17,11 @@ import type { CanonicalPaymentMethod } from "../payments/payment-methods.js";
 
 export interface PatientInput {
   name: string;
-  age: number;
-  sex?: string | undefined;
+  sex: string;
   dateOfBirth?: Date | undefined;
+  estimatedAgeValue?: number | undefined;
+  estimatedAgeUnit?: EstimatedAgeUnit | undefined;
+  allergyStatus: AllergyStatus;
   phone?: string | undefined;
   address?: string | undefined;
   emergencyContactName?: string | undefined;
@@ -271,9 +280,11 @@ export class LabService {
             "-" +
             randomUUID().slice(0, 6).toUpperCase(),
           name: input.name.trim(),
-          age: input.age,
-          sex: text(input.sex),
+          sex: input.sex.trim(),
           dateOfBirth: input.dateOfBirth ?? null,
+          estimatedAgeValue: input.estimatedAgeValue ?? null,
+          estimatedAgeUnit: input.estimatedAgeUnit ?? null,
+          allergyStatus: input.allergyStatus,
           phone: text(input.phone),
           address: text(input.address),
           emergencyContactName: text(input.emergencyContactName),
@@ -481,10 +492,10 @@ export class LabService {
           include: visitInclude,
         });
       }
-      await transaction.$queryRawUnsafe<Array<{ id: string }>>(
-        "SELECT id FROM public.lab_visits WHERE tenant_id = $1::uuid AND id = $2::uuid FOR UPDATE",
-        principal.tenantId,
-        visitId,
+      await transaction.$queryRaw<Array<{ id: string }>>(
+        Prisma.sql`SELECT id FROM public.lab_visits
+                   WHERE tenant_id = ${principal.tenantId}::uuid AND id = ${visitId}::uuid
+                   FOR UPDATE`,
       );
       const visit = await transaction.labVisit.findUnique({
         where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
@@ -592,7 +603,7 @@ export class LabService {
     return withTenantContext(prisma, principal, async (transaction) => {
       const visit = await transaction.labVisit.findUnique({
         where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
-        include: { tests: true },
+        include: { tests: { include: { labTest: true } } },
       });
       if (!visit || !canAccessBranch(principal, visit.branchId))
         throw new AppError({
@@ -619,30 +630,78 @@ export class LabService {
           code: "LAB_SAMPLE_REQUIRED",
           message: "The patient sample must be collected before results can be entered",
         });
+      if (target.resultStatus !== "PENDING")
+        throw new AppError({
+          statusCode: 409,
+          code: "LAB_RESULT_AMENDMENT_REQUIRED",
+          message: "A completed laboratory result must be changed through the amendment workflow",
+        });
       if (input.resultStatus === "PENDING")
         throw new AppError({
           statusCode: 400,
           code: "LAB_RESULT_INCOMPLETE",
           message: "Choose a completed result status",
         });
+      if (target.resultType !== "POSITIVE_NEGATIVE" && input.resultStatus !== "COMPLETED")
+        throw new AppError({
+          statusCode: 400,
+          code: "LAB_RESULT_STATUS_INVALID",
+          message: "This result type must use the completed status",
+        });
       if (target.resultType === "NUMERIC" && input.numericValue === undefined)
         throw new AppError({
           statusCode: 400,
           code: "NUMERIC_RESULT_REQUIRED",
-          message: "Enter a numeric result value",
+          message: "A numeric result is required before this test can be completed.",
         });
-      if (["TEXT", "SELECT"].includes(target.resultType) && !input.resultValue?.trim())
+      if (target.resultType === "TEXT" && !input.resultValue?.trim())
         throw new AppError({
           statusCode: 400,
           code: "TEXT_RESULT_REQUIRED",
-          message: "Enter a result value",
+          message: "Result text is required before this test can be completed.",
         });
-      if (target.resultType === "PANEL" && !input.resultData)
-        throw new AppError({
-          statusCode: 400,
-          code: "PANEL_RESULT_REQUIRED",
-          message: "Enter all panel result components",
+      if (target.resultType === "SELECT") {
+        const selected = input.resultValue?.trim();
+        const configured = Array.isArray(target.labTest.resultOptions)
+          ? target.labTest.resultOptions.filter(
+              (value): value is string => typeof value === "string",
+            )
+          : [];
+        if (!selected || !configured.includes(selected))
+          throw new AppError({
+            statusCode: 400,
+            code: "SELECT_RESULT_INVALID",
+            message: "Select one of the configured result options.",
+          });
+      }
+      if (target.resultType === "PANEL") {
+        const result =
+          input.resultData &&
+          typeof input.resultData === "object" &&
+          !Array.isArray(input.resultData)
+            ? (input.resultData as Record<string, unknown>)
+            : null;
+        const components = Array.isArray(target.labTest.panelComponents)
+          ? target.labTest.panelComponents
+          : [];
+        const missing = components.some((component) => {
+          if (!component || typeof component !== "object" || Array.isArray(component)) return true;
+          const definition = component as Record<string, unknown>;
+          const name = typeof definition["name"] === "string" ? definition["name"] : "";
+          const required = definition["required"] !== false;
+          const value = result?.[name];
+          return (
+            required &&
+            (value === undefined || value === null || (typeof value === "string" && !value.trim()))
+          );
         });
+        if (!result || components.length === 0 || missing)
+          throw new AppError({
+            statusCode: 400,
+            code: "PANEL_RESULT_REQUIRED",
+            message: "All required panel result components must be completed.",
+          });
+      }
       if (
         target.resultType === "POSITIVE_NEGATIVE" &&
         !["POSITIVE", "NEGATIVE", "INCONCLUSIVE"].includes(input.resultStatus)

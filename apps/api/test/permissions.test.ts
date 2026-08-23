@@ -19,7 +19,7 @@ describe("tenant role permissions", () => {
     ["RECEPTIONIST", "customer.manage", true],
     ["PHARMACIST", "clinic.complete", false],
     ["ADMIN", "supplier.manage", true],
-    ["LAB_TECHNICIAN", "lab.result", true],
+    ["LAB_TECHNICIAN", "lab.result.create", true],
     ["LAB_TECHNICIAN", "sale.create", false],
     ["LAB_TECHNICIAN", "clinic.complete", false],
     ["LAB_TECHNICIAN", "clinic.examine", false],
