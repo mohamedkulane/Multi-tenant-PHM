@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: phms-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: phms_dev
+      POSTGRES_USER: phms_migrator
+      POSTGRES_PASSWORD: PHMS_Migrator_2026_91
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - phms_postgres_data:/var/lib/postgresql/data
+      - ./docker/init:/docker-entrypoint-initdb.d
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U phms_migrator -d phms_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  phms_postgres_data:

@@ -1,0 +1,2 @@
+-- Account profile functionality uses existing users.full_name and users.email columns.
+-- No database schema changes are required for this migration.

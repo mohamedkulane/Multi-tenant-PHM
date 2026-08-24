@@ -213,7 +213,12 @@ function Sidebar({
               )}
             </div>
             <div>
-              <p className="text-lg font-bold tracking-tight">PHMS</p>
+              <p
+                className="max-w-[140px] truncate text-lg font-bold tracking-tight"
+                title={!platform && tenantName ? tenantName : "PHMS"}
+              >
+                {!platform && tenantName ? tenantName : "PHMS"}
+              </p>
               <p className="whitespace-nowrap text-[9px] font-semibold tracking-[0.1em] text-emerald-200 uppercase">
                 {platform ? "Platform control" : "Healthcare workspace"}
               </p>
