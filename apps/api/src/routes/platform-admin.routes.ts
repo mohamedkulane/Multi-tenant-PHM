@@ -221,6 +221,7 @@ export function createPlatformAdminRouter(
         ownerEmail: z.email().max(320),
         ownerUsername: z.string().trim().min(2).max(80),
         ownerPassword: z.string().min(12).max(256),
+        monthlyFee: z.coerce.number().min(0).max(1000000).default(0).transform(String),
       })
       .parse(request.body);
     response.status(201).json({
@@ -232,6 +233,27 @@ export function createPlatformAdminRouter(
     });
   });
 
+  router.patch(
+    "/tenants/:tenantId",
+    requirePlatformRole("SUPER_ADMIN"),
+    async (request, response) => {
+      const body = z
+        .object({
+          name: z.string().trim().min(2).max(150),
+          timezone: z.string().trim().min(3).max(100),
+          currencyCode: z.string().trim().length(3),
+        })
+        .parse(request.body);
+      response.json({
+        data: await administration.updateTenant(
+          request.platformAuth!,
+          uuid.parse(request.params.tenantId),
+          body,
+          (response.locals as { requestId?: string }).requestId,
+        ),
+      });
+    },
+  );
   router.get(
     "/tenants/:tenantId/users",
     requirePlatformRole("SUPER_ADMIN"),
@@ -325,6 +347,7 @@ export function createPlatformAdminRouter(
       const body = z
         .object({
           months: z.number().int().min(1).max(36),
+          paymentAmount: z.coerce.number().min(0).max(1000000).default(0).transform(String),
           paymentReference: z.string().trim().max(180).optional(),
           note: z.string().trim().max(500).optional(),
         })
@@ -334,6 +357,7 @@ export function createPlatformAdminRouter(
           request.platformAuth!,
           uuid.parse(request.params.tenantId),
           body.months,
+          body.paymentAmount,
           body.paymentReference,
           body.note,
           (response.locals as { requestId?: string }).requestId,

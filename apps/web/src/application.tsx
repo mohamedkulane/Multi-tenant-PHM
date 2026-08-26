@@ -218,7 +218,7 @@ function TenantApplication({ pathname }: { pathname: string }) {
       "/doctor/history": "history",
     };
     page = <DoctorWorkspacePage branch={branch} mode={modes[pathname]!} />;
-  } else if (pathname === "/reception/visits")
+  } else if (["/reception/visits", "/reception/patients"].includes(pathname))
     page = <ReceptionDeskPage branch={branch} workspace={workspace.data} />;
   else if (pathname === "/products")
     page = <ProductsPage principal={principal.data} branch={branch} />;

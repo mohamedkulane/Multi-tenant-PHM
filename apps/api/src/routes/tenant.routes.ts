@@ -65,6 +65,12 @@ export function createTenantRouter(
         invoicePaperSize: z.enum(["A4", "A5", "THERMAL_80MM"]).default("A4"),
         invoiceShowLogo: z.boolean().default(true),
         pharmacistDiscountPercent: z.number().min(0).max(100).default(0),
+        consultationFee: z.number().min(0).max(1000000).default(0),
+        paymentMethods: z
+          .array(z.enum(["EVC_PLUS", "E_DAHAB", "SALAAM_BANK"]))
+          .min(1)
+          .max(3)
+          .default(["EVC_PLUS", "E_DAHAB", "SALAAM_BANK"]),
       })
       .parse(request.body);
     response.json({
@@ -89,6 +95,12 @@ export function createTenantRouter(
         invoicePaperSize: z.enum(["A4", "A5", "THERMAL_80MM"]).default("A4"),
         invoiceShowLogo: z.boolean().default(true),
         pharmacistDiscountPercent: z.number().min(0).max(100).default(0),
+        consultationFee: z.number().min(0).max(1000000).default(0),
+        paymentMethods: z
+          .array(z.enum(["EVC_PLUS", "E_DAHAB", "SALAAM_BANK"]))
+          .min(1)
+          .max(3)
+          .default(["EVC_PLUS", "E_DAHAB", "SALAAM_BANK"]),
       })
       .parse(request.body);
     response.json({

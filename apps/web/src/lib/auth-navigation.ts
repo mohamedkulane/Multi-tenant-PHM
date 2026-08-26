@@ -29,7 +29,9 @@ export function tenantRouteAllowed(role: string, pathname: string) {
   if (role === "PHARMACIST")
     return (
       pathname.startsWith("/pharmacy/") ||
-      ["/sales", "/inventory", "/products", "/suppliers", "/customers"].includes(pathname)
+      ["/sales", "/invoices", "/inventory", "/products", "/suppliers", "/customers"].includes(
+        pathname,
+      )
     );
   return false;
 }

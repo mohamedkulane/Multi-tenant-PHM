@@ -52,6 +52,8 @@ export interface Workspace {
     invoicePaperSize?: "A4" | "A5" | "THERMAL_80MM";
     invoiceShowLogo?: boolean;
     pharmacistDiscountPercent?: number | string;
+    consultationFee?: number | string;
+    paymentMethods?: string[];
   } | null;
   subscription?: {
     planCode: string;

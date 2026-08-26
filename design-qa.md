@@ -82,3 +82,45 @@ regions.
   the first browser comparison.
 
 final result: blocked
+
+---
+
+# PHMS Design QA
+
+Result: **PASS**
+Date: 2026-08-26
+
+## Target coverage
+
+- Pharmacist dashboard, pharmacy sales, list/grid browser, invoices, products table, and Account profile.
+- Reception dashboard/Visits/Patient Desk, visit View action, consultation payment, priced lab-payment table, discount/total, and money-free lab authorization receipt.
+- Doctor dashboard simplification and optional clinical field labelling.
+- Admin dashboard/account settings and Super Admin tenant/subscription controls.
+
+## Responsive verification
+
+- Desktop viewport: 1440 × 1000 — no horizontal overflow.
+- Mobile viewport: 390 × 844 — no horizontal overflow; primary Sign in target measured 320 × 55 px.
+- Browser console: no errors or warnings during the verified preview state.
+- Navigation and action layouts use wrapping/scroll containers at narrow widths.
+
+## Functional verification
+
+- API and Web TypeScript checks: passed.
+- API and Web lint: passed.
+- API route and workflow test suite: passed, including clinic, laboratory, security, and platform administration routes.
+- Production builds: passed.
+- PostgreSQL migration deployment: passed; database readiness: `ready`.
+- Static button audit: submit buttons are form-bound; non-submit controls have click/navigation handlers.
+
+## Visual review
+
+- Existing PHMS blue/white healthcare design system retained.
+- Dashboard KPI cards, searchable tables, responsive actions, compact status badges, and Account cards follow the supplied references.
+- Pharmacy Sales defaults to List, with Grid second.
+- Lab authorization is a compact printable receipt with patient/order/test/sample details and no financial values.
+
+## Evidence
+
+- Browser capture: `artifacts/phms-responsive-qa.png`
+- Local preview: `http://127.0.0.1:5173/`

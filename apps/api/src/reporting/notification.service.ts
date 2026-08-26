@@ -39,6 +39,35 @@ export class PrismaNotificationService implements NotificationService {
         branchId,
       },
       async (transaction) => {
+        const subscription = ["OWNER", "ADMIN"].includes(principal.role)
+          ? await transaction.tenantSubscription.findUnique({
+              where: { tenantId: principal.tenantId },
+            })
+          : null;
+        const daysRemaining = subscription?.endsAt
+          ? Math.ceil((subscription.endsAt.getTime() - Date.now()) / 86_400_000)
+          : null;
+        const subscriptionReminder =
+          daysRemaining !== null && daysRemaining >= 0 && daysRemaining <= 2
+            ? {
+                id: principal.tenantId,
+                tenantId: principal.tenantId,
+                branchId: null,
+                type: "SUBSCRIPTION_EXPIRING",
+                fingerprint: `subscription-expiring:${subscription!.endsAt!.toISOString().slice(0, 10)}`,
+                title: "Subscription-ka system-ka wuu dhacayaa",
+                message:
+                  daysRemaining === 0
+                    ? "Subscription-ku maanta ayuu dhacayaa. Fadlan cusboonaysii."
+                    : `Subscription-ku ${daysRemaining} maalin gudahood ayuu dhacayaa.`,
+                entityType: "tenant_subscription",
+                entityId: principal.tenantId,
+                metadata: { readOnly: true, adminOnly: true },
+                readAt: null,
+                readByMembershipId: null,
+                createdAt: new Date(),
+              }
+            : null;
         const [systemItems, systemUnread, platformItems, platformUnread] = await Promise.all([
           clinicalOnly
             ? Promise.resolve([])
@@ -85,10 +114,14 @@ export class PrismaNotificationService implements NotificationService {
           readByMembershipId: item.readAt ? item.membershipId : null,
           createdAt: item.createdAt,
         }));
-        const items = [...systemItems, ...messages]
+        const items = [
+          ...(subscriptionReminder ? [subscriptionReminder] : []),
+          ...systemItems,
+          ...messages,
+        ]
           .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
           .slice(0, 100);
-        return { unread: systemUnread + platformUnread, items };
+        return { unread: systemUnread + platformUnread + (subscriptionReminder ? 1 : 0), items };
       },
     );
   }

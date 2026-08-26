@@ -21,7 +21,7 @@ const optionalNumber = (minimum: number, maximum: number) =>
   z.coerce.number().finite().min(minimum).max(maximum).optional();
 const assessmentSchema = z
   .object({
-    chiefComplaint: z.string().trim().min(1).max(2000),
+    chiefComplaint: z.string().trim().max(2000).default(""),
     historyPresentIllness: optionalText(6000),
     pastMedicalHistory: optionalText(4000),
     pastSurgicalHistory: optionalText(4000),

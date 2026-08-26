@@ -197,6 +197,7 @@ export function createLabRouter(authentication: AuthService, service: LabService
         z
           .object({
             amount: money.refine((value) => Number(value) > 0, "Payment must be positive"),
+            discount: money.optional(),
             method: paymentMethodSchema,
             externalReference: z.string().trim().max(180).optional(),
             notes: z.string().trim().max(500).optional(),

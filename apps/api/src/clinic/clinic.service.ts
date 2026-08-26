@@ -11,6 +11,7 @@ import {
 import type { AuthenticatedPrincipal } from "../auth/auth.types.js";
 import { prisma } from "../database/prisma.js";
 import { setTransactionContext, withTenantContext } from "../database/tenant-context.js";
+import { nextDocumentNumber } from "../database/document-number.js";
 import { AppError } from "../errors/app-error.js";
 import { formatMoney, parseMoney } from "../finance/money.js";
 import { canAccessBranch } from "../middleware/authorization.js";
@@ -410,13 +411,19 @@ export class ClinicService {
             message: "Choose an active doctor assigned to this branch",
           });
       }
+      const visitNumber = await nextDocumentNumber(
+        transaction,
+        principal.tenantId,
+        "CLINIC_VISIT",
+        "VIS/V",
+      );
       const paid = fee === 0n;
       const visit = await transaction.clinicVisit.create({
         data: {
           tenantId: principal.tenantId,
           branchId: input.branchId,
           patientId: patient.id,
-          visitNumber: `CLN-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`,
+          visitNumber,
           status: paid ? "WAITING_FOR_DOCTOR" : "AWAITING_CONSULTATION_PAYMENT",
           consultationFee: formatMoney(fee),
           consultationPaymentStatus: paid ? "PAID" : "UNPAID",
@@ -727,17 +734,19 @@ export class ClinicService {
           message: "Choose active laboratory tests from this tenant",
         });
       const subtotal = tests.reduce((sum, test) => sum + parseMoney(test.price.toString()), 0n);
+      const labNumber = await nextDocumentNumber(
+        transaction,
+        principal.tenantId,
+        "LAB_ORDER",
+        "LAB/L",
+      );
       const labVisit = await transaction.labVisit.create({
         data: {
           tenantId: principal.tenantId,
           branchId: visit.branchId,
           patientId: visit.patientId,
           clinicVisitId: visit.id,
-          visitNumber:
-            "LAB-" +
-            new Date().toISOString().slice(0, 10).replaceAll("-", "") +
-            "-" +
-            randomUUID().slice(0, 8).toUpperCase(),
+          visitNumber: labNumber,
           status: "REGISTERED",
           clinicalNotes: clean(input.clinicalNotes),
           priority: input.priority,

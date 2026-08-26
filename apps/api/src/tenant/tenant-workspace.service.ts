@@ -45,6 +45,8 @@ export interface UpdateTenantSettingsInput {
   invoicePaperSize: string;
   invoiceShowLogo: boolean;
   pharmacistDiscountPercent: number;
+  consultationFee: number;
+  paymentMethods: string[];
 }
 
 function serializeAudit<T extends { id: bigint }>(entry: T) {
@@ -827,6 +829,8 @@ export class TenantWorkspaceService {
             invoicePaperSize: input.invoicePaperSize,
             invoiceShowLogo: input.invoiceShowLogo,
             pharmacistDiscountPercent: input.pharmacistDiscountPercent,
+            consultationFee: input.consultationFee,
+            paymentMethods: input.paymentMethods,
           },
           update: {
             displayName: input.displayName.trim(),
@@ -839,6 +843,8 @@ export class TenantWorkspaceService {
             invoicePaperSize: input.invoicePaperSize,
             invoiceShowLogo: input.invoiceShowLogo,
             pharmacistDiscountPercent: input.pharmacistDiscountPercent,
+            consultationFee: input.consultationFee,
+            paymentMethods: input.paymentMethods,
           },
         });
         await transaction.auditLog.create({
@@ -910,6 +916,8 @@ export class TenantWorkspaceService {
             invoicePaperSize: input.invoicePaperSize,
             invoiceShowLogo: input.invoiceShowLogo,
             pharmacistDiscountPercent: input.pharmacistDiscountPercent,
+            consultationFee: input.consultationFee,
+            paymentMethods: input.paymentMethods,
           },
           update: {
             displayName: input.displayName.trim(),
@@ -922,6 +930,8 @@ export class TenantWorkspaceService {
             invoicePaperSize: input.invoicePaperSize,
             invoiceShowLogo: input.invoiceShowLogo,
             pharmacistDiscountPercent: input.pharmacistDiscountPercent,
+            consultationFee: input.consultationFee,
+            paymentMethods: input.paymentMethods,
           },
         });
         await transaction.auditLog.create({

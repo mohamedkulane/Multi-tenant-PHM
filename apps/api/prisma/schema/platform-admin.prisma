@@ -67,7 +67,10 @@ model TenantSubscription {
   planCode  String    @map("plan_code") @db.VarChar(50)
   startsAt  DateTime  @default(now()) @map("starts_at") @db.Timestamptz(3)
   endsAt    DateTime? @map("ends_at") @db.Timestamptz(3)
-  overrides Json      @default("{}")
+  overrides         Json      @default("{}")
+  monthlyFee        Decimal   @default(0) @map("monthly_fee") @db.Decimal(19, 4)
+  lastPaymentAmount Decimal   @default(0) @map("last_payment_amount") @db.Decimal(19, 4)
+  lastPaidAt        DateTime? @map("last_paid_at") @db.Timestamptz(3)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([planCode])
@@ -86,6 +89,8 @@ model TenantBranding {
   invoicePaperSize          String   @default("A4") @map("invoice_paper_size") @db.VarChar(20)
   invoiceShowLogo           Boolean  @default(true) @map("invoice_show_logo")
   pharmacistDiscountPercent Decimal  @default(0) @map("pharmacist_discount_percent") @db.Decimal(5, 2)
+  consultationFee            Decimal  @default(0) @map("consultation_fee") @db.Decimal(19, 4)
+  paymentMethods             Json     @default("[\"EVC_PLUS\",\"E_DAHAB\",\"SALAAM_BANK\"]") @map("payment_methods")
   updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("tenant_branding")

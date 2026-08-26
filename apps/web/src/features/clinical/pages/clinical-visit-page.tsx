@@ -273,7 +273,7 @@ export function ClinicalVisitPage({
         >
           <div className="grid gap-5 p-5 md:grid-cols-2">
             <TextArea
-              label="Chief complaint *"
+              label="Chief complaint (optional)"
               value={assessment.chiefComplaint}
               onChange={(value) => setAssessment({ ...assessment, chiefComplaint: value })}
             />
@@ -373,11 +373,7 @@ export function ClinicalVisitPage({
               No past surgery
             </label>{" "}
           </div>
-          <Action
-            mutation={save}
-            disabled={!canEdit || !assessment.chiefComplaint.trim()}
-            label="Save assessment"
-          />
+          <Action mutation={save} disabled={!canEdit} label="Save assessment" />
         </Card>
       ) : null}
       {section === "examination" ? (
@@ -438,11 +434,7 @@ export function ClinicalVisitPage({
                 />
               </div>
             </div>
-            <Action
-              mutation={save}
-              disabled={!canEdit || !assessment.chiefComplaint.trim()}
-              label="Save examination"
-            />
+            <Action mutation={save} disabled={!canEdit} label="Save examination" />
           </Card>
         </div>
       ) : null}

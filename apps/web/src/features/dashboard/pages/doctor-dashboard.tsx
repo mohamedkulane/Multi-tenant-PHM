@@ -1,13 +1,4 @@
-import {
-  Activity,
-  CalendarDays,
-  CheckCircle2,
-  FlaskConical,
-  History,
-  Search,
-  Stethoscope,
-  Users,
-} from "lucide-react";
+import { CalendarDays, CheckCircle2, FlaskConical, Stethoscope, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Card, EmptyState, StatusBadge } from "../../../components/ui";
 import { Link } from "../../../lib/navigation";
@@ -78,10 +69,10 @@ export function DoctorDashboard({
           tone="amber"
         />
         <Kpi
-          label="Lab results ready"
-          value={results.length}
-          detail="Awaiting your review"
-          icon={FlaskConical}
+          label="Today's visits"
+          value={todayVisits.length}
+          detail="Patients assigned today"
+          icon={CalendarDays}
           tone="violet"
         />
         <Kpi
@@ -95,7 +86,7 @@ export function DoctorDashboard({
       <div className="grid gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(18rem,0.8fr)]">
         <div className="min-w-0 space-y-6">
           <DoctorQueue visits={queue} />
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div>
             <Card title="Today's summary">
               <div className="grid grid-cols-2 gap-5 p-5 sm:grid-cols-4 lg:grid-cols-2 2xl:grid-cols-4">
                 <Summary
@@ -119,34 +110,6 @@ export function DoctorDashboard({
                 />
               </div>
             </Card>
-            <Card title="Quick actions">
-              <div className="grid gap-3 p-5 sm:grid-cols-2">
-                <QuickLink
-                  to="/doctor/queue"
-                  icon={Activity}
-                  label="My queue"
-                  detail="Open waiting patients"
-                />
-                <QuickLink
-                  to="/doctor/lab-results"
-                  icon={FlaskConical}
-                  label="Lab results"
-                  detail="Review returned tests"
-                />
-                <QuickLink
-                  to="/doctor/patients"
-                  icon={Search}
-                  label="Patient search"
-                  detail="Find a patient record"
-                />
-                <QuickLink
-                  to="/doctor/history"
-                  icon={History}
-                  label="Clinical history"
-                  detail="Review completed visits"
-                />
-              </div>
-            </Card>
           </div>
           <Card title="Recent activity">
             <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
@@ -165,19 +128,6 @@ export function DoctorDashboard({
               ))}
               {!todayVisits.length ? (
                 <p className="p-3 text-sm text-slate-500">No visits scheduled today.</p>
-              ) : null}
-              <Link className="btn-secondary w-full" to="/doctor/calendar">
-                View calendar
-              </Link>
-            </div>
-          </Card>
-          <Card title={`Lab results ready (${results.length})`}>
-            <div className="divide-y divide-slate-100">
-              {results.slice(0, 5).map((visit) => (
-                <ResultRow key={dashboardText(visit["id"])} visit={visit} />
-              ))}
-              {!results.length ? (
-                <p className="p-5 text-sm text-slate-500">No lab results awaiting review.</p>
               ) : null}
             </div>
           </Card>
@@ -348,32 +298,6 @@ function Summary({
     </div>
   );
 }
-function QuickLink({
-  to,
-  icon: Icon,
-  label,
-  detail,
-}: {
-  to: string;
-  icon: LucideIcon;
-  label: string;
-  detail: string;
-}) {
-  return (
-    <Link
-      to={to}
-      className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 transition hover:border-emerald-200 hover:bg-emerald-50/40"
-    >
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-700">
-        <Icon size={17} />
-      </span>
-      <span className="min-w-0">
-        <span className="block text-sm font-bold text-slate-900">{label}</span>
-        <span className="block truncate text-xs text-slate-500">{detail}</span>
-      </span>
-    </Link>
-  );
-}
 function ActivityCard({ visit }: { visit: DashboardRow }) {
   return (
     <Link
@@ -405,27 +329,6 @@ function ScheduleRow({ visit }: { visit: DashboardRow }) {
           {status(visit).replaceAll("_", " ")}
         </span>
       </span>
-    </Link>
-  );
-}
-function ResultRow({ visit }: { visit: DashboardRow }) {
-  return (
-    <Link
-      to={`/doctor/visits/${dashboardText(visit["id"])}/lab-results`}
-      className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50"
-    >
-      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-violet-50 text-violet-600">
-        <FlaskConical size={16} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-bold text-slate-900">
-          {dashboardText(dashboardPatient(visit)["name"])}
-        </span>
-        <span className="block truncate text-xs text-slate-500">
-          {dashboardText(visit["visitNumber"])}
-        </span>
-      </span>
-      <span className="text-xs text-slate-400">{shortTime(visit["updatedAt"])}</span>
     </Link>
   );
 }

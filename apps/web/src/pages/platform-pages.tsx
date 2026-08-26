@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Pencil, Plus, ShieldCheck } from "lucide-react";
+import { Archive, Building2, Pencil, Plus, ShieldCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { errorMessage, getData, sendData } from "../api/client";
 import {
@@ -9,6 +9,7 @@ import {
   ErrorState,
   Field,
   LoadingState,
+  money,
   PageHeader,
   SimpleTable,
   Stat,
@@ -41,6 +42,17 @@ export function PlatformOverviewPage() {
     queryFn: () => getData<Row[]>("/platform/support-requests"),
   });
   const tenantRows = tenants.data ?? [];
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const expectedSubscriptions = tenantRows.reduce(
+    (total, row) => total + Number(record(row["subscription"])["monthlyFee"] ?? 0),
+    0,
+  );
+  const collectedSubscriptions = tenantRows.reduce((total, row) => {
+    const subscription = record(row["subscription"]);
+    return text(subscription["lastPaidAt"]).startsWith(currentMonth)
+      ? total + Number(subscription["lastPaymentAmount"] ?? 0)
+      : total;
+  }, 0);
   return (
     <>
       <PageHeader
@@ -54,6 +66,13 @@ export function PlatformOverviewPage() {
         }
       />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat label="Monthly expected" value={money(expectedSubscriptions)} tone="blue" />
+        <Stat label="Collected this month" value={money(collectedSubscriptions)} tone="emerald" />
+        <Stat
+          label="Outstanding this month"
+          value={money(Math.max(0, expectedSubscriptions - collectedSubscriptions))}
+          tone="rose"
+        />
         <Stat label="Tenants" value={tenantRows.length} />
         <Stat
           label="Active or trial"
@@ -206,6 +225,7 @@ export function TenantOnboardingPage() {
     ownerEmail: "",
     ownerUsername: "owner",
     ownerPassword: "",
+    monthlyFee: "0",
   });
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -246,6 +266,7 @@ export function TenantOnboardingPage() {
               ["Owner email", "ownerEmail"],
               ["Owner username", "ownerUsername"],
               ["Owner password", "ownerPassword"],
+              ["Agreed monthly fee", "monthlyFee"],
             ] as const
           ).map(([label, key]) => (
             <Field key={key} label={label}>
@@ -268,7 +289,13 @@ export function TenantOnboardingPage() {
                 <input
                   className="input"
                   type={
-                    key === "ownerPassword" ? "password" : key === "ownerEmail" ? "email" : "text"
+                    key === "ownerPassword"
+                      ? "password"
+                      : key === "ownerEmail"
+                        ? "email"
+                        : key === "monthlyFee"
+                          ? "number"
+                          : "text"
                   }
                   minLength={key === "ownerPassword" ? 12 : undefined}
                   value={form[key]}
@@ -299,10 +326,16 @@ export function PlatformTenantDetailPage({
 }) {
   const client = useQueryClient();
   const isSuperAdmin = principal.role === "SUPER_ADMIN";
-  const [dialog, setDialog] = useState<"plan" | "branding" | "renew" | null>(null);
+  const [dialog, setDialog] = useState<"edit" | "plan" | "branding" | "renew" | null>(null);
   const [userControl, setUserControl] = useState<Row | null>(null);
   const [userReason, setUserReason] = useState("");
-  const [renewForm, setRenewForm] = useState({ months: "1", paymentReference: "", note: "" });
+  const [renewForm, setRenewForm] = useState({
+    months: "1",
+    paymentAmount: "0",
+    paymentReference: "",
+    note: "",
+  });
+  const [editForm, setEditForm] = useState({ name: "", timezone: "", currencyCode: "" });
   const [planForm, setPlanForm] = useState({
     planCode: "starter",
     maxBranches: "",
@@ -358,6 +391,16 @@ export function PlatformTenantDetailPage({
       }),
     onSuccess: async () => client.invalidateQueries({ queryKey: ["platform-tenant", tenantId] }),
   });
+  const saveTenant = useMutation({
+    mutationFn: () => sendData("patch", `/platform/tenants/${tenantId}`, editForm),
+    onSuccess: async () => {
+      setDialog(null);
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["platform-tenant", tenantId] }),
+        client.invalidateQueries({ queryKey: ["platform-tenants"] }),
+      ]);
+    },
+  });
   const savePlan = useMutation({
     mutationFn: () =>
       sendData("patch", `/platform/tenants/${tenantId}/plan`, {
@@ -382,12 +425,13 @@ export function PlatformTenantDetailPage({
     mutationFn: () =>
       sendData("post", `/platform/tenants/${tenantId}/subscription/renew`, {
         months: Number(renewForm.months),
+        paymentAmount: Number(renewForm.paymentAmount),
         paymentReference: renewForm.paymentReference || undefined,
         note: renewForm.note || undefined,
       }),
     onSuccess: async () => {
       setDialog(null);
-      setRenewForm({ months: "1", paymentReference: "", note: "" });
+      setRenewForm({ months: "1", paymentAmount: "0", paymentReference: "", note: "" });
       await client.invalidateQueries({ queryKey: ["platform-tenant", tenantId] });
     },
   });
@@ -412,6 +456,14 @@ export function PlatformTenantDetailPage({
   const branding = (tenant["branding"] ?? {}) as Row;
   const subscription = (tenant["subscription"] ?? {}) as Row;
   const usage = record(tenant["usage"]);
+  const openEdit = () => {
+    setEditForm({
+      name: text(tenant["name"]),
+      timezone: text(tenant["timezone"]),
+      currencyCode: text(tenant["currencyCode"]),
+    });
+    setDialog("edit");
+  };
   const openPlan = () => {
     setPlanForm({
       planCode: text(subscription["planCode"] ?? tenant["planCode"]),
@@ -445,6 +497,20 @@ export function PlatformTenantDetailPage({
               <button className="btn-primary" onClick={() => setDialog("renew")}>
                 Renew subscription
               </button>
+              <button className="btn-secondary" onClick={openEdit}>
+                <Pencil size={15} /> Edit tenant
+              </button>
+              {tenant["status"] !== "CANCELLED" ? (
+                <button
+                  className="btn-secondary text-rose-700"
+                  onClick={() => {
+                    if (window.confirm("Archive this tenant and revoke all active sessions?"))
+                      status.mutate("CANCELLED");
+                  }}
+                >
+                  <Archive size={15} /> Archive tenant
+                </button>
+              ) : null}
               <button className="btn-secondary" onClick={openPlan}>
                 Change plan
               </button>
@@ -637,6 +703,54 @@ export function PlatformTenantDetailPage({
         </>
       ) : null}
       <Dialog
+        open={dialog === "edit"}
+        title="Edit tenant"
+        description="Update the organization identity. Every change is written to the platform audit log."
+        onClose={() => setDialog(null)}
+      >
+        <form
+          className="space-y-4 p-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            saveTenant.mutate();
+          }}
+        >
+          <Field label="Organization name">
+            <input
+              className="input"
+              value={editForm.name}
+              onChange={(event) => setEditForm({ ...editForm, name: event.target.value })}
+              required
+            />
+          </Field>
+          <Field label="Timezone">
+            <input
+              className="input"
+              value={editForm.timezone}
+              onChange={(event) => setEditForm({ ...editForm, timezone: event.target.value })}
+              required
+            />
+          </Field>
+          <Field label="Currency code">
+            <input
+              className="input"
+              maxLength={3}
+              value={editForm.currencyCode}
+              onChange={(event) =>
+                setEditForm({ ...editForm, currencyCode: event.target.value.toUpperCase() })
+              }
+              required
+            />
+          </Field>
+          {saveTenant.error ? (
+            <p className="text-sm text-rose-700">{errorMessage(saveTenant.error)}</p>
+          ) : null}
+          <button className="btn-primary" disabled={saveTenant.isPending}>
+            Save tenant
+          </button>
+        </form>
+      </Dialog>{" "}
+      <Dialog
         open={dialog === "renew"}
         title="Renew monthly subscription"
         description="Extends access from the current expiry date, or from today if it already expired."
@@ -660,6 +774,19 @@ export function PlatformTenantDetailPage({
               required
             />
           </Field>
+          <Field label="Payment received (Lacagta la helay)">
+            <input
+              className="input"
+              type="number"
+              min="0"
+              step="0.01"
+              value={renewForm.paymentAmount}
+              onChange={(event) =>
+                setRenewForm({ ...renewForm, paymentAmount: event.target.value })
+              }
+              required
+            />
+          </Field>{" "}
           <Field label="Payment reference (Tixraaca lacagta)">
             <input
               className="input"

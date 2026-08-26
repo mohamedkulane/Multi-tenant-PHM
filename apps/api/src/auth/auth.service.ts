@@ -207,18 +207,20 @@ export class PrismaAuthService implements AuthService {
           const value = billing[key];
           return typeof value === "string" || typeof value === "number" ? String(value) : fallback;
         };
+        const canManageSubscription = membership.role === "OWNER" || membership.role === "ADMIN";
         throw new AppError({
           statusCode: 402,
           code: "TENANT_SUBSCRIPTION_EXPIRED",
-          message:
-            "Subscription-ka pharmacy-ga wuu dhacay. Bixi " +
-            billingText("monthlyFee", "fee-ga") +
-            " " +
-            billingText("currencyCode", "") +
-            " lambarka " +
-            billingText("paymentNumber", "platform admin") +
-            ". " +
-            billingText("instructions", "La xiriir platform admin."),
+          message: canManageSubscription
+            ? "Subscription-ka system-ka wuu dhacay. Bixi " +
+              billingText("monthlyFee", "fee-ga") +
+              " " +
+              billingText("currencyCode", "") +
+              " lambarka " +
+              billingText("paymentNumber", "platform admin") +
+              ". " +
+              billingText("instructions", "La xiriir platform admin.")
+            : "System-ka organization-ka waa xiran yahay. Fadlan la xiriir Admin/Owner-ka organization-ka.",
         });
       }
       const token = createSessionToken(directory.tenantId);

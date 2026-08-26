@@ -1999,7 +1999,7 @@ export function SalesPage({
   const [selectedSale, setSelectedSale] = useState<Row | null>(null);
   const [salesSearch, setSalesSearch] = useState("");
   const [productSearch, setProductSearch] = useState("");
-  const [productView, setProductView] = useState<"grid" | "list">("grid");
+  const [productView, setProductView] = useState<"grid" | "list">("list");
   const [productPage, setProductPage] = useState(1);
   const [linkedClinicVisitId, setLinkedClinicVisitId] = useState("");
   const [saleAction, setSaleAction] = useState<"details" | "payment" | "return" | "void" | null>(
@@ -2258,15 +2258,20 @@ export function SalesPage({
     }));
   };
   if (!branch) return <EmptyState title="Choose a branch" />;
+  const invoicesOnly = window.location.pathname === "/invoices";
   return (
     <>
       <PageHeader
-        eyebrow="Point of sale"
-        title="Sales and invoices"
-        description="Atomic checkout with conditional stock decrement and immutable invoice evidence."
+        eyebrow={invoicesOnly ? "Pharmacy records" : "Point of sale"}
+        title={invoicesOnly ? "Invoices" : "Pharmacy sales"}
+        description={
+          invoicesOnly
+            ? "Search, view, collect balances, and print pharmacy invoices."
+            : "Select medicines, receive payment, and complete a pharmacy sale."
+        }
       />
       <div className="space-y-6">
-        {principal.role !== "LAB_TECHNICIAN" ? (
+        {!invoicesOnly && principal.role !== "LAB_TECHNICIAN" ? (
           <form
             className="space-y-5"
             onSubmit={(event) => {
@@ -2420,25 +2425,25 @@ export function SalesPage({
                     <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
                       <button
                         type="button"
-                        aria-label="Grid view"
-                        className={`rounded-lg p-2 ${productView === "grid" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:bg-white"}`}
-                        onClick={() => {
-                          setProductView("grid");
-                          setProductPage(1);
-                        }}
-                      >
-                        <Grid2X2 size={17} />
-                      </button>
-                      <button
-                        type="button"
                         aria-label="List view"
-                        className={`rounded-lg p-2 ${productView === "list" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:bg-white"}`}
+                        className={`flex items-center gap-2 rounded-lg px-3 py-2 ${productView === "list" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:bg-white"}`}
                         onClick={() => {
                           setProductView("list");
                           setProductPage(1);
                         }}
                       >
-                        <List size={18} />
+                        <List size={18} /> <span className="hidden sm:inline">List</span>
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Grid view"
+                        className={`flex items-center gap-2 rounded-lg px-3 py-2 ${productView === "grid" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:bg-white"}`}
+                        onClick={() => {
+                          setProductView("grid");
+                          setProductPage(1);
+                        }}
+                      >
+                        <Grid2X2 size={17} /> <span className="hidden sm:inline">Grid</span>
                       </button>
                     </div>
                   </div>
@@ -2847,82 +2852,89 @@ export function SalesPage({
           </form>
         ) : null}
       </div>
-      <div className="mt-6">
-        <Card title="Recent sales">
-          <div className="action-bar">
-            <input
-              className="input max-w-md"
-              placeholder="Search invoice, customer, or phone"
-              value={salesSearch}
-              onChange={(event) => setSalesSearch(event.target.value)}
-            />
-            <span className="ml-auto text-sm font-semibold text-slate-500">
-              {sales.data?.length ?? 0} sales
-            </span>
-          </div>
-          {sales.isLoading ? (
-            <LoadingState />
-          ) : sales.error ? (
-            <ErrorState error={sales.error} />
-          ) : (
-            <SimpleTable
-              rows={sales.data ?? []}
-              columns={[
-                {
-                  label: "Invoice",
-                  render: (row) => <span className="font-bold">{text(row["invoiceNumber"])}</span>,
-                },
-                { label: "Customer", render: (row) => text(row["customerName"]) },
-                { label: "Items", render: (row) => rows(row["items"]).length },
-                {
-                  label: "Total",
-                  render: (row) =>
-                    money(row["grandTotal"] ?? row["total"], workspace.tenant.currencyCode),
-                },
-                {
-                  label: "Paid",
-                  render: (row) => money(row["amountPaid"], workspace.tenant.currencyCode),
-                },
-                {
-                  label: "Balance",
-                  render: (row) => money(row["remainingBalance"], workspace.tenant.currencyCode),
-                },
-                { label: "Status", render: (row) => <StatusBadge value={text(row["status"])} /> },
-                { label: "Created", render: (row) => date(row["createdAt"]) },
-                {
-                  label: "Actions",
-                  render: (row) => (
-                    <div className="flex flex-wrap gap-2">
-                      <button className="btn-secondary" onClick={() => openSale(row, "details")}>
-                        View
-                      </button>
-                      {principal.role !== "LAB_TECHNICIAN" &&
-                      row["status"] !== "VOIDED" &&
-                      Number(row["remainingBalance"]) > 0 ? (
-                        <button className="btn-secondary" onClick={() => openSale(row, "payment")}>
-                          Payment
+      {invoicesOnly ? (
+        <div className="mt-6">
+          <Card title="Pharmacy invoices">
+            <div className="action-bar">
+              <input
+                className="input max-w-md"
+                placeholder="Search invoice, customer, or phone"
+                value={salesSearch}
+                onChange={(event) => setSalesSearch(event.target.value)}
+              />
+              <span className="ml-auto text-sm font-semibold text-slate-500">
+                {sales.data?.length ?? 0} sales
+              </span>
+            </div>
+            {sales.isLoading ? (
+              <LoadingState />
+            ) : sales.error ? (
+              <ErrorState error={sales.error} />
+            ) : (
+              <SimpleTable
+                rows={sales.data ?? []}
+                columns={[
+                  {
+                    label: "Invoice",
+                    render: (row) => (
+                      <span className="font-bold">{text(row["invoiceNumber"])}</span>
+                    ),
+                  },
+                  { label: "Customer", render: (row) => text(row["customerName"]) },
+                  { label: "Items", render: (row) => rows(row["items"]).length },
+                  {
+                    label: "Total",
+                    render: (row) =>
+                      money(row["grandTotal"] ?? row["total"], workspace.tenant.currencyCode),
+                  },
+                  {
+                    label: "Paid",
+                    render: (row) => money(row["amountPaid"], workspace.tenant.currencyCode),
+                  },
+                  {
+                    label: "Balance",
+                    render: (row) => money(row["remainingBalance"], workspace.tenant.currencyCode),
+                  },
+                  { label: "Status", render: (row) => <StatusBadge value={text(row["status"])} /> },
+                  { label: "Created", render: (row) => date(row["createdAt"]) },
+                  {
+                    label: "Actions",
+                    render: (row) => (
+                      <div className="flex flex-wrap gap-2">
+                        <button className="btn-secondary" onClick={() => openSale(row, "details")}>
+                          View
                         </button>
-                      ) : null}
-                      {principal.role !== "LAB_TECHNICIAN" && row["status"] !== "VOIDED" ? (
-                        <button className="btn-secondary" onClick={() => openSale(row, "return")}>
-                          Return
+                        {principal.role !== "LAB_TECHNICIAN" &&
+                        row["status"] !== "VOIDED" &&
+                        Number(row["remainingBalance"]) > 0 ? (
+                          <button
+                            className="btn-secondary"
+                            onClick={() => openSale(row, "payment")}
+                          >
+                            Payment
+                          </button>
+                        ) : null}
+                        {principal.role !== "LAB_TECHNICIAN" && row["status"] !== "VOIDED" ? (
+                          <button className="btn-secondary" onClick={() => openSale(row, "return")}>
+                            Return
+                          </button>
+                        ) : null}
+                        <button
+                          className="btn-icon"
+                          aria-label="Open printable invoice"
+                          onClick={() => openSale(row, "details")}
+                        >
+                          <Printer size={15} />
                         </button>
-                      ) : null}
-                      <button
-                        className="btn-icon"
-                        aria-label="Open printable invoice"
-                        onClick={() => openSale(row, "details")}
-                      >
-                        <Printer size={15} />
-                      </button>
-                    </div>
-                  ),
-                },
-              ]}
-            />
-          )}
-        </Card>
-      </div>
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+            )}
+          </Card>
+        </div>
+      ) : null}
       <Dialog
         open={Boolean(selectedSale)}
         title={`Invoice ${text(selectedSale?.["invoiceNumber"])}`}
@@ -4874,7 +4886,9 @@ export function OperationsPage({ branch }: { branch?: Branch | undefined }) {
               {
                 label: "Actions",
                 render: (row) =>
-                  !row["readAt"] ? (
+                  record(row["metadata"])["readOnly"] ? (
+                    <StatusBadge value="ADMIN NOTICE" />
+                  ) : !row["readAt"] ? (
                     <button
                       className="btn-secondary"
                       onClick={() => markRead.mutate(text(row["id"]))}
@@ -4931,10 +4945,15 @@ export function TenantAuditPage() {
 }
 
 export function AccountPage(props: { principal: TenantPrincipal; workspace: Workspace }) {
-  if (["DOCTOR", "LAB_TECHNICIAN"].includes(props.principal.role)) {
+  if (["DOCTOR", "LAB_TECHNICIAN", "RECEPTIONIST", "PHARMACIST"].includes(props.principal.role)) {
     return <StaffAccountPage {...props} />;
   }
-  return <WorkspaceAccountPage {...props} />;
+  return (
+    <div className="space-y-8">
+      <WorkspaceAccountPage {...props} />
+      <StaffAccountPage {...props} embedded />
+    </div>
+  );
 }
 
 function WorkspaceAccountPage({
@@ -4960,6 +4979,9 @@ function WorkspaceAccountPage({
     invoicePaperSize: workspace.branding?.invoicePaperSize ?? "A4",
     invoiceShowLogo: workspace.branding?.invoiceShowLogo ?? true,
     pharmacistDiscountPercent: Number(workspace.branding?.pharmacistDiscountPercent ?? 0),
+    consultationFee: Number(workspace.branding?.consultationFee ?? 0),
+    paymentMethods:
+      workspace.branding?.paymentMethods ?? PAYMENT_METHOD_OPTIONS.map((option) => option.value),
   });
   const save = useMutation({
     mutationFn: () =>
@@ -5107,6 +5129,47 @@ function WorkspaceAccountPage({
                 }
               />
             </Field>
+            <Field label="Default consultation fee">
+              <input
+                className="input"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.consultationFee}
+                onChange={(e) => setForm({ ...form, consultationFee: Number(e.target.value) })}
+              />
+            </Field>
+            <div className="rounded-xl border border-slate-200 p-4 md:col-span-2 xl:col-span-3">
+              <p className="text-sm font-bold text-slate-900">Accepted payment methods</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Add or remove the methods Reception and Pharmacy can select. At least one must
+                remain active.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                {PAYMENT_METHOD_OPTIONS.map((option) => {
+                  const enabled = form.paymentMethods.includes(option.value);
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={enabled ? "btn-primary" : "btn-secondary"}
+                      onClick={() =>
+                        setForm({
+                          ...form,
+                          paymentMethods: enabled
+                            ? form.paymentMethods.length > 1
+                              ? form.paymentMethods.filter((method) => method !== option.value)
+                              : form.paymentMethods
+                            : [...form.paymentMethods, option.value],
+                        })
+                      }
+                    >
+                      {enabled ? "Remove" : "Add"} {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>{" "}
             <Field label="Logo-ga invoice-ka (Show logo)">
               <select
                 className="input"

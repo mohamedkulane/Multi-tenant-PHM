@@ -18,6 +18,7 @@ export interface OnboardTenantInput {
   ownerEmail: string;
   ownerUsername: string;
   ownerPassword: string;
+  monthlyFee: string;
 }
 
 export interface BrandingInput {
@@ -116,6 +117,12 @@ export interface PlatformAdminService {
     input: OnboardTenantInput,
     requestId?: string,
   ): Promise<unknown>;
+  updateTenant(
+    principal: PlatformPrincipal,
+    tenantId: string,
+    input: { name: string; timezone: string; currencyCode: string },
+    requestId?: string,
+  ): Promise<unknown>;
   setStatus(
     principal: PlatformPrincipal,
     tenantId: string,
@@ -146,6 +153,7 @@ export interface PlatformAdminService {
     principal: PlatformPrincipal,
     tenantId: string,
     months: number,
+    paymentAmount: string,
     paymentReference: string | undefined,
     note: string | undefined,
     requestId?: string,
@@ -934,6 +942,7 @@ export class PrismaPlatformAdminService implements PlatformAdminService {
           data: {
             tenantId,
             planCode: input.planCode,
+            monthlyFee: input.monthlyFee,
             endsAt: new Date(new Date().setMonth(new Date().getMonth() + 1)),
           },
         });
@@ -1011,6 +1020,53 @@ export class PrismaPlatformAdminService implements PlatformAdminService {
     );
   }
 
+  async updateTenant(
+    principal: PlatformPrincipal,
+    tenantId: string,
+    input: { name: string; timezone: string; currencyCode: string },
+    requestId?: string,
+  ) {
+    requireSuperAdmin(principal);
+    return prisma.$transaction(async (transaction) => {
+      await setPlatformWorkflow(transaction, principal, tenantId);
+      const before = await transaction.tenant.findUnique({ where: { id: tenantId } });
+      if (!before)
+        throw new AppError({
+          statusCode: 404,
+          code: "TENANT_NOT_FOUND",
+          message: "Tenant not found",
+        });
+      const tenant = await transaction.tenant.update({
+        where: { id: tenantId },
+        data: {
+          name: input.name.trim(),
+          timezone: input.timezone.trim(),
+          currencyCode: input.currencyCode.trim().toUpperCase(),
+        },
+      });
+      await transaction.platformAuditLog.create({
+        data: {
+          actorUserId: principal.userId,
+          action: "TENANT_UPDATED",
+          entityType: "tenant",
+          entityId: tenantId,
+          targetTenantId: tenantId,
+          before: {
+            name: before.name,
+            timezone: before.timezone,
+            currencyCode: before.currencyCode,
+          },
+          after: {
+            name: tenant.name,
+            timezone: tenant.timezone,
+            currencyCode: tenant.currencyCode,
+          },
+          metadata: requestId ? { requestId } : {},
+        },
+      });
+      return tenant;
+    });
+  }
   async setStatus(
     principal: PlatformPrincipal,
     tenantId: string,
@@ -1206,6 +1262,7 @@ export class PrismaPlatformAdminService implements PlatformAdminService {
     principal: PlatformPrincipal,
     tenantId: string,
     months: number,
+    paymentAmount: string,
     paymentReference?: string,
     note?: string,
     requestId?: string,
@@ -1226,7 +1283,7 @@ export class PrismaPlatformAdminService implements PlatformAdminService {
       endsAt.setUTCMonth(endsAt.getUTCMonth() + months);
       const subscription = await transaction.tenantSubscription.update({
         where: { tenantId },
-        data: { endsAt },
+        data: { endsAt, lastPaymentAmount: paymentAmount, lastPaidAt: new Date() },
       });
       await transaction.tenant.update({ where: { id: tenantId }, data: { status: "ACTIVE" } });
       await transaction.platformAuditLog.create({
@@ -1237,7 +1294,7 @@ export class PrismaPlatformAdminService implements PlatformAdminService {
           entityId: tenantId,
           targetTenantId: tenantId,
           before: { endsAt: current.endsAt },
-          after: { endsAt, months, paymentReference, note },
+          after: { endsAt, months, paymentAmount, paymentReference, note },
           metadata: requestId ? { requestId } : {},
         },
       });

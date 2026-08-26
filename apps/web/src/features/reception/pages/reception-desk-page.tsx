@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardPlus, Printer, UserPlus, WalletCards } from "lucide-react";
-import { useState } from "react";
+import { ClipboardPlus, Eye, Printer, ReceiptText, UserPlus, WalletCards } from "lucide-react";
+import { useEffect, useState } from "react";
 import { errorMessage, getData, sendData } from "../../../api/client";
 import { showToast } from "../../../components/toast";
 import {
@@ -27,6 +27,8 @@ type Row = Record<string, unknown>;
 const text = (value: unknown) =>
   typeof value === "string" || typeof value === "number" ? String(value) : "";
 const rows = (value: unknown): Row[] => (Array.isArray(value) ? (value as Row[]) : []);
+const receptionStatus = (status: string) =>
+  ["LAB_RESULTS_READY", "DOCTOR_REVIEW", "RESULTS_READY"].includes(status) ? "WITH DOCTOR" : status;
 
 export function ReceptionDeskPage({
   branch,
@@ -36,12 +38,28 @@ export function ReceptionDeskPage({
   workspace: Workspace;
 }) {
   const client = useQueryClient();
+  const configuredPaymentMethods =
+    workspace.branding?.paymentMethods ?? PAYMENT_METHOD_OPTIONS.map((option) => option.value);
+  const paymentOptions = PAYMENT_METHOD_OPTIONS.filter((option) =>
+    configuredPaymentMethods.includes(option.value),
+  );
+  const configuredDefaultMethod = toPaymentMethod(
+    paymentOptions[0]?.value ?? DEFAULT_PAYMENT_METHOD,
+  );
   const [visitOpen, setVisitOpen] = useState(false);
   const [patientOpen, setPatientOpen] = useState(false);
+  const [selectedVisit, setSelectedVisit] = useState<Row | null>(null);
+  const [paymentTarget, setPaymentTarget] = useState<{
+    visit: Row;
+    kind: "CONSULTATION" | "LAB";
+  } | null>(null);
+  const [labDiscount, setLabDiscount] = useState("0");
   const [visitForm, setVisitForm] = useState({
     patientId: "",
     doctorMembershipId: "",
-    consultationFee: "0",
+    consultationFee: String(workspace.branding?.consultationFee ?? 0),
+    paymentMethod: configuredDefaultMethod,
+    transactionReference: "",
   });
   const [patientForm, setPatientForm] = useState({
     name: "",
@@ -53,13 +71,26 @@ export function ReceptionDeskPage({
     allergyStatus: "UNKNOWN",
     allergies: "",
   });
-  const [method, setMethod] = useState(DEFAULT_PAYMENT_METHOD);
+  const [method, setMethod] = useState(configuredDefaultMethod);
   const [transactionReference, setTransactionReference] = useState("");
   const visits = useQuery({
     queryKey: ["clinic-visits", branch?.id],
     queryFn: () => getData<Row[]>(`/clinic/visits?branchId=${branch!.id}`),
     enabled: Boolean(branch),
   });
+  const receptionVisits = (visits.data ?? []).filter(
+    (visit) =>
+      ![
+        "WAITING_FOR_SAMPLE",
+        "WAITING_FOR_LAB",
+        "LAB_IN_PROGRESS",
+        "LAB_RESULTS_READY",
+        "RESULTS_READY",
+        "DOCTOR_REVIEW",
+        "AT_PHARMACY",
+        "COMPLETED",
+      ].includes(text(visit["status"])),
+  );
   const patients = useQuery({
     queryKey: ["reception-patients"],
     queryFn: () => getData<Row[]>("/lab/patients"),
@@ -70,21 +101,41 @@ export function ReceptionDeskPage({
     queryFn: () => getData<Row[]>(`/clinic/doctors?branchId=${branch!.id}`),
     enabled: Boolean(branch),
   });
+  useEffect(() => {
+    const visitId = new URLSearchParams(window.location.search).get("visit");
+    if (visitId && visits.data)
+      setSelectedVisit(visits.data.find((visit) => text(visit["id"]) === visitId) ?? null);
+  }, [visits.data]);
   const refresh = () => client.invalidateQueries({ queryKey: ["clinic-visits"] });
   const register = useMutation({
-    mutationFn: () =>
-      sendData<Row>("post", "/clinic/visits", {
+    mutationFn: async () => {
+      const visit = await sendData<Row>("post", "/clinic/visits", {
         branchId: branch!.id,
         patientId: visitForm.patientId,
         consultationFee: visitForm.consultationFee,
         doctorMembershipId: visitForm.doctorMembershipId || undefined,
-      }),
+      });
+      if (Number(visitForm.consultationFee) > 0) {
+        await sendData<Row>("post", `/clinic/visits/${text(visit["id"])}/consultation-payment`, {
+          method: visitForm.paymentMethod,
+          externalReference: visitForm.transactionReference.trim() || undefined,
+          idempotencyKey: `consultation:${text(visit["id"])}:${crypto.randomUUID()}`,
+        });
+      }
+      return visit;
+    },
     onSuccess: async () => {
       setVisitOpen(false);
-      setVisitForm({ patientId: "", doctorMembershipId: "", consultationFee: "0" });
+      setVisitForm({
+        patientId: "",
+        doctorMembershipId: "",
+        consultationFee: String(workspace.branding?.consultationFee ?? 0),
+        paymentMethod: configuredDefaultMethod,
+        transactionReference: "",
+      });
       showToast({
-        title: "Patient visit registered",
-        message: "Collect the consultation fee before sending the patient to the doctor.",
+        title: "Patient visit registered and paid",
+        message: "The patient is cleared to proceed to the doctor.",
       });
       await refresh();
     },
@@ -137,9 +188,12 @@ export function ReceptionDeskPage({
           })
         : (() => {
             const lab = rows(visit["labVisits"])[0]!;
-            const balance = Number(text(lab["total"])) - Number(text(lab["amountPaid"]));
+            const discount = Number(labDiscount || 0);
+            const discountedBalance =
+              Number(text(lab["subtotal"])) - discount - Number(text(lab["amountPaid"]));
             return sendData<Row>("post", `/lab/visits/${text(lab["id"])}/payments`, {
-              amount: balance.toFixed(2),
+              amount: discountedBalance.toFixed(2),
+              discount: discount.toFixed(2),
               method,
               externalReference: transactionReference.trim() || undefined,
               idempotencyKey: `laboratory:${text(lab["id"])}:${crypto.randomUUID()}`,
@@ -147,6 +201,7 @@ export function ReceptionDeskPage({
           })(),
     onSuccess: async () => {
       setTransactionReference("");
+      setPaymentTarget(null);
       showToast({
         title: "Payment received",
         message: "The patient can proceed to the next care station.",
@@ -180,34 +235,8 @@ export function ReceptionDeskPage({
         title="Patient flow"
         description="Clinical details and laboratory results are hidden from Reception."
       >
-        <div className="border-b border-slate-100 p-4">
-          <Field label="Payment Method *">
-            <select
-              className="max-w-xs"
-              value={method}
-              onChange={(event) => setMethod(toPaymentMethod(event.target.value))}
-            >
-              {PAYMENT_METHOD_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field
-            label="Transaction Reference"
-            hint={method === "SALAAM_BANK" ? "Recommended for Salaam Bank" : "Optional"}
-          >
-            <input
-              className="max-w-xs"
-              value={transactionReference}
-              onChange={(event) => setTransactionReference(event.target.value)}
-              placeholder="Optional transaction reference"
-            />
-          </Field>
-        </div>
         <div className="overflow-x-auto">
-          {visits.data?.length ? (
+          {receptionVisits.length ? (
             <table className="data-table">
               <thead>
                 <tr>
@@ -219,7 +248,7 @@ export function ReceptionDeskPage({
                 </tr>
               </thead>
               <tbody>
-                {visits.data.map((visit) => {
+                {receptionVisits.map((visit) => {
                   const status = text(visit["status"]);
                   const lab = rows(visit["labVisits"])[0];
                   return (
@@ -227,7 +256,7 @@ export function ReceptionDeskPage({
                       <td className="font-semibold">{text(visit["visitNumber"])}</td>
                       <td>{text((visit["patient"] as Row)?.["name"])}</td>
                       <td>
-                        <StatusBadge value={status} />
+                        <StatusBadge value={receptionStatus(status)} />
                         <p className="mt-1 text-xs text-slate-500">
                           {status === "AWAITING_CONSULTATION_PAYMENT"
                             ? "Collect consultation fee"
@@ -238,37 +267,49 @@ export function ReceptionDeskPage({
                       </td>
                       <td>{date(visit["createdAt"])}</td>
                       <td>
-                        {status === "AWAITING_CONSULTATION_PAYMENT" ? (
+                        <div className="flex flex-wrap gap-2">
                           <button
-                            className="btn-primary"
-                            disabled={pay.isPending}
-                            onClick={() => pay.mutate({ visit, kind: "CONSULTATION" })}
-                          >
-                            <WalletCards size={16} /> Receive fee
-                          </button>
-                        ) : status === "AWAITING_LAB_PAYMENT" ? (
-                          <button
-                            className="btn-primary"
-                            disabled={pay.isPending}
-                            onClick={() => pay.mutate({ visit, kind: "LAB" })}
-                          >
-                            <WalletCards size={16} /> Receive lab fee
-                          </button>
-                        ) : lab &&
-                          [
-                            "WAITING_FOR_SAMPLE",
-                            "LAB_IN_PROGRESS",
-                            "LAB_RESULTS_READY",
-                            "DOCTOR_REVIEW",
-                            "COMPLETED",
-                          ].includes(status) ? (
-                          <Link
+                            type="button"
                             className="btn-secondary"
-                            to={`/clinic/visits/${text(visit["id"])}/print/lab-receipt`}
+                            onClick={() => setSelectedVisit(visit)}
                           >
-                            <Printer size={16} /> Print lab receipt
-                          </Link>
-                        ) : null}
+                            <Eye size={16} /> View
+                          </button>
+                          {status === "AWAITING_CONSULTATION_PAYMENT" ? (
+                            <button
+                              type="button"
+                              className="btn-primary"
+                              onClick={() => setPaymentTarget({ visit, kind: "CONSULTATION" })}
+                            >
+                              <WalletCards size={16} /> Receive fee
+                            </button>
+                          ) : status === "AWAITING_LAB_PAYMENT" ? (
+                            <button
+                              type="button"
+                              className="btn-primary"
+                              onClick={() => {
+                                setLabDiscount(text(lab?.["discount"]) || "0");
+                                setPaymentTarget({ visit, kind: "LAB" });
+                              }}
+                            >
+                              <WalletCards size={16} /> Collect lab payment
+                            </button>
+                          ) : lab &&
+                            [
+                              "WAITING_FOR_SAMPLE",
+                              "LAB_IN_PROGRESS",
+                              "LAB_RESULTS_READY",
+                              "DOCTOR_REVIEW",
+                              "COMPLETED",
+                            ].includes(status) ? (
+                            <Link
+                              className="btn-secondary"
+                              to={`/clinic/visits/${text(visit["id"])}/print/lab-receipt`}
+                            >
+                              <Printer size={16} /> Lab authorization
+                            </Link>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -280,6 +321,201 @@ export function ReceptionDeskPage({
           )}
         </div>
       </Card>
+      <Dialog
+        open={Boolean(selectedVisit)}
+        title={`Visit ${text(selectedVisit?.["visitNumber"])}`}
+        onClose={() => setSelectedVisit(null)}
+        wide
+      >
+        {selectedVisit ? (
+          <div className="space-y-5 p-5">
+            <div className="grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-3">
+              <div>
+                <p className="text-xs font-bold text-slate-500 uppercase">Patient</p>
+                <p className="mt-1 font-bold">
+                  {text((selectedVisit["patient"] as Row)?.["name"])}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-500 uppercase">Patient number</p>
+                <p className="mt-1 font-bold">
+                  {text((selectedVisit["patient"] as Row)?.["patientNumber"])}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-500 uppercase">Status</p>
+                <div className="mt-1">
+                  <StatusBadge value={receptionStatus(text(selectedVisit["status"]))} />
+                </div>
+              </div>
+            </div>
+            {rows(selectedVisit["labVisits"]).map((lab) => (
+              <section
+                key={text(lab["id"])}
+                className="overflow-hidden rounded-2xl border border-slate-200"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-4">
+                  <div>
+                    <p className="text-xs font-bold text-slate-500 uppercase">Laboratory order</p>
+                    <p className="font-bold">{text(lab["visitNumber"])}</p>
+                  </div>
+                  <StatusBadge
+                    value={
+                      Number(lab["amountPaid"]) >= Number(lab["total"])
+                        ? "PAID"
+                        : "PAYMENT REQUIRED"
+                    }
+                  />
+                </div>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Test</th>
+                      <th>Sample</th>
+                      {text(selectedVisit["status"]) === "AWAITING_LAB_PAYMENT" ? (
+                        <th>Price</th>
+                      ) : null}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows(lab["tests"]).map((test) => (
+                      <tr key={text(test["id"])}>
+                        <td className="font-semibold">{text(test["testName"])}</td>
+                        <td>{text(test["sampleType"]) || "Specimen"}</td>
+                        {text(selectedVisit["status"]) === "AWAITING_LAB_PAYMENT" ? (
+                          <td>{money(test["price"], workspace.tenant.currencyCode)}</td>
+                        ) : null}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {Number(lab["amountPaid"]) >= Number(lab["total"]) ? (
+                  <div className="flex justify-end p-4">
+                    <Link
+                      className="btn-primary"
+                      to={`/clinic/visits/${text(selectedVisit["id"])}/print/lab-receipt`}
+                    >
+                      <ReceiptText size={16} /> Print lab authorization
+                    </Link>
+                  </div>
+                ) : null}
+              </section>
+            ))}
+          </div>
+        ) : null}
+      </Dialog>
+      <Dialog
+        open={Boolean(paymentTarget)}
+        title={
+          paymentTarget?.kind === "LAB" ? "Collect laboratory payment" : "Collect consultation fee"
+        }
+        onClose={() => setPaymentTarget(null)}
+        wide={paymentTarget?.kind === "LAB"}
+      >
+        {paymentTarget ? (
+          <form
+            className="space-y-4 p-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              pay.mutate(paymentTarget);
+            }}
+          >
+            {paymentTarget.kind === "LAB" ? (
+              (() => {
+                const lab = rows(paymentTarget.visit["labVisits"])[0]!;
+                const subtotal = Number(lab["subtotal"] ?? 0);
+                const discount = Number(labDiscount || 0);
+                const total = Math.max(0, subtotal - discount);
+                return (
+                  <>
+                    <div className="overflow-x-auto rounded-xl border border-slate-200">
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Test</th>
+                            <th>Sample</th>
+                            <th>Price</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows(lab["tests"]).map((test) => (
+                            <tr key={text(test["id"])}>
+                              <td className="font-semibold">{text(test["testName"])}</td>
+                              <td>{text(test["sampleType"]) || "Specimen"}</td>
+                              <td>{money(test["price"], workspace.tenant.currencyCode)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="ml-auto grid max-w-md grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 text-sm">
+                      <span>Subtotal</span>
+                      <strong className="text-right">
+                        {money(subtotal, workspace.tenant.currencyCode)}
+                      </strong>
+                      <label htmlFor="lab-discount">Discount</label>
+                      <input
+                        id="lab-discount"
+                        type="number"
+                        min="0"
+                        max={subtotal}
+                        step="0.01"
+                        value={labDiscount}
+                        onChange={(event) => setLabDiscount(event.target.value)}
+                      />
+                      <span className="border-t pt-3 font-bold">Total</span>
+                      <strong className="border-t pt-3 text-right text-lg">
+                        {money(total, workspace.tenant.currencyCode)}
+                      </strong>
+                    </div>
+                  </>
+                );
+              })()
+            ) : (
+              <div className="rounded-xl bg-slate-50 p-4">
+                <p className="text-sm text-slate-500">Consultation fee</p>
+                <p className="text-2xl font-black">
+                  {money(paymentTarget.visit["consultationFee"], workspace.tenant.currencyCode)}
+                </p>
+              </div>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Payment method">
+                <select
+                  value={method}
+                  onChange={(event) => setMethod(toPaymentMethod(event.target.value))}
+                >
+                  {paymentOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Transaction reference (optional)">
+                <input
+                  value={transactionReference}
+                  onChange={(event) => setTransactionReference(event.target.value)}
+                />
+              </Field>
+            </div>
+            {pay.error ? (
+              <p className="text-sm font-semibold text-rose-700">{errorMessage(pay.error)}</p>
+            ) : null}
+            <button
+              className="btn-primary w-full"
+              disabled={
+                pay.isPending ||
+                (paymentTarget.kind === "LAB" &&
+                  Number(labDiscount) >=
+                    Number(rows(paymentTarget.visit["labVisits"])[0]?.["subtotal"] ?? 0))
+              }
+            >
+              <WalletCards size={16} /> {pay.isPending ? "Processing…" : "Confirm payment"}
+            </button>
+          </form>
+        ) : null}
+      </Dialog>
       <Dialog
         open={visitOpen}
         title="Register patient visit"
@@ -332,8 +568,32 @@ export function ReceptionDeskPage({
               }
             />
           </Field>
+          <Field label="Payment method">
+            <select
+              value={visitForm.paymentMethod}
+              onChange={(event) =>
+                setVisitForm({ ...visitForm, paymentMethod: toPaymentMethod(event.target.value) })
+              }
+            >
+              {paymentOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Transaction reference (optional)">
+            <input
+              value={visitForm.transactionReference}
+              onChange={(event) =>
+                setVisitForm({ ...visitForm, transactionReference: event.target.value })
+              }
+            />
+          </Field>
           <button className="btn-primary" disabled={register.isPending}>
-            Register visit
+            {register.isPending
+              ? "Registering and collecting…"
+              : "Register visit & collect payment"}
           </button>
         </form>
       </Dialog>

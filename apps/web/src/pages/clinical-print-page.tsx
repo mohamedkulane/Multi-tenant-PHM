@@ -128,6 +128,63 @@ function LabDocument({ visit, workspace }: { visit: Row; workspace: Workspace })
   );
 }
 
+function LabAuthorization({ visit, workspace }: { visit: Row; workspace: Workspace }) {
+  const lab = rows(visit["labVisits"])[0];
+  if (!lab) return <EmptyState title="Laboratory order not found" />;
+  const patient = object(visit["patient"]);
+  const actors = object(visit["actors"]);
+  const requester = object(actors[text(lab["requestedByMembershipId"])]);
+  const cleared = Number(lab["amountPaid"] ?? 0) >= Number(lab["total"] ?? 0);
+  return (
+    <article className="clinical-print-sheet clinical-receipt-sheet lab-authorization-sheet">
+      <Header workspace={workspace} title="LAB ORDER" />
+      <section className="lab-authorization-number">
+        <span>Laboratory order</span>
+        <strong>{text(lab["visitNumber"])}</strong>
+      </section>
+      <Patient visit={visit} />
+      <section className="lab-authorization-requester">
+        <span>Requested by</span>
+        <strong>{text(requester["fullName"]) || text(requester["username"]) || "Doctor"}</strong>
+      </section>
+      <section className={`lab-clearance ${cleared ? "is-cleared" : "is-pending"}`}>
+        <span>PAYMENT STATUS</span>
+        <strong>{cleared ? "✓ CLEARED" : "PAYMENT REQUIRED"}</strong>
+        <p>
+          {cleared
+            ? "Authorized for laboratory processing"
+            : "Return to Reception before sample collection"}
+        </p>
+      </section>
+      <section className="lab-authorization-tests">
+        <h2>REQUESTED TESTS</h2>
+        <table>
+          <tbody>
+            {rows(lab["tests"]).map((test) => (
+              <tr key={text(test["id"])}>
+                <td>
+                  <strong>{text(test["testName"])}</strong>
+                </td>
+                <td>{text(test["sampleType"]) || "Specimen"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p>
+          <strong>Priority:</strong> {text(lab["priority"]) || "ROUTINE"}
+        </p>
+      </section>
+      {text(lab["clinicalNotes"]) ? (
+        <section className="lab-authorization-note">
+          <span>Clinical note</span>
+          <p>{text(lab["clinicalNotes"])}</p>
+        </section>
+      ) : null}
+      <footer>No prices or payment amounts are shown on this laboratory authorization.</footer>
+    </article>
+  );
+}
+
 function Receipt({
   visit,
   workspace,
@@ -213,9 +270,11 @@ export function ClinicalPrintPage({
           className="btn-secondary"
           onClick={() =>
             navigate(
-              kind === "lab"
-                ? `/doctor/visits/${visitId}/lab-results`
-                : `/clinic/visits/${visitId}`,
+              principal.role === "RECEPTIONIST"
+                ? "/reception/visits"
+                : kind === "lab"
+                  ? `/doctor/visits/${visitId}/lab-results`
+                  : `/clinic/visits/${visitId}`,
             )
           }
         >
@@ -227,12 +286,10 @@ export function ClinicalPrintPage({
       </div>
       {kind === "lab" ? (
         <LabDocument visit={visit.data} workspace={workspace} />
+      ) : kind === "lab-receipt" ? (
+        <LabAuthorization visit={visit.data} workspace={workspace} />
       ) : (
-        <Receipt
-          visit={visit.data}
-          workspace={workspace}
-          type={kind === "lab-receipt" ? "LAB" : "CONSULTATION"}
-        />
+        <Receipt visit={visit.data} workspace={workspace} type="CONSULTATION" />
       )}
     </div>
   );

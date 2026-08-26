@@ -10,6 +10,7 @@ import {
 import type { AuthenticatedPrincipal } from "../auth/auth.types.js";
 import { prisma } from "../database/prisma.js";
 import { setTransactionContext, withTenantContext } from "../database/tenant-context.js";
+import { nextDocumentNumber } from "../database/document-number.js";
 import { AppError } from "../errors/app-error.js";
 import { parseMoney, formatMoney } from "../finance/money.js";
 import { canAccessBranch } from "../middleware/authorization.js";
@@ -59,6 +60,7 @@ export interface VisitInput {
 
 export interface LabPaymentInput {
   amount: string;
+  discount?: string | undefined;
   method: CanonicalPaymentMethod;
   externalReference?: string | undefined;
   notes?: string | undefined;
@@ -270,15 +272,17 @@ export class LabService {
   }
 
   async createPatient(principal: AuthenticatedPrincipal, input: PatientInput) {
-    return withTenantContext(prisma, principal, (transaction) =>
-      transaction.patient.create({
+    return withTenantContext(prisma, principal, async (transaction) => {
+      const patientNumber = await nextDocumentNumber(
+        transaction,
+        principal.tenantId,
+        "PATIENT",
+        "PT/P",
+      );
+      return transaction.patient.create({
         data: {
           tenantId: principal.tenantId,
-          patientNumber:
-            "PT-" +
-            new Date().toISOString().slice(0, 10).replaceAll("-", "") +
-            "-" +
-            randomUUID().slice(0, 6).toUpperCase(),
+          patientNumber,
           name: input.name.trim(),
           sex: input.sex.trim(),
           dateOfBirth: input.dateOfBirth ?? null,
@@ -293,8 +297,8 @@ export class LabService {
           allergies: text(input.allergies),
           notes: text(input.notes),
         },
-      }),
-    );
+      });
+    });
   }
 
   async visits(principal: AuthenticatedPrincipal, branchId: string) {
@@ -392,12 +396,18 @@ export class LabService {
           code: "LAB_PAY_LATER_REQUIRES_ZERO_PAYMENT",
           message: "Pay later must be registered without an initial payment",
         });
+      const visitNumber = await nextDocumentNumber(
+        transaction,
+        principal.tenantId,
+        "LAB_ORDER",
+        "LAB/L",
+      );
       const visit = await transaction.labVisit.create({
         data: {
           tenantId: principal.tenantId,
           branchId: input.branchId,
           patientId: patient.id,
-          visitNumber: `LAB-${new Date().toISOString().slice(0, 10).replaceAll("-", "")}-${randomUUID().slice(0, 8).toUpperCase()}`,
+          visitNumber,
           status: "RESULTS_PENDING",
           clinicalNotes: text(input.clinicalNotes),
           subtotal: formatMoney(subtotal),
@@ -506,8 +516,24 @@ export class LabService {
           code: "LAB_VISIT_NOT_FOUND",
           message: "Lab visit not found",
         });
-      const total = parseMoney(visit.total.toString());
+      const subtotal = parseMoney(visit.subtotal.toString());
       const paid = parseMoney(visit.amountPaid.toString());
+      const currentDiscount = parseMoney(visit.discount.toString());
+      const discount =
+        input.discount === undefined ? currentDiscount : parseMoney(input.discount, "lab discount");
+      if (discount > subtotal)
+        throw new AppError({
+          statusCode: 400,
+          code: "LAB_DISCOUNT_EXCEEDS_SUBTOTAL",
+          message: "Lab discount cannot exceed subtotal",
+        });
+      if (paid > 0n && discount !== currentDiscount)
+        throw new AppError({
+          statusCode: 409,
+          code: "LAB_DISCOUNT_LOCKED_AFTER_PAYMENT",
+          message: "Lab discount cannot be changed after a payment has been recorded",
+        });
+      const total = subtotal - discount;
       if (payment > total - paid)
         throw new AppError({
           statusCode: 400,
@@ -530,7 +556,12 @@ export class LabService {
       });
       await transaction.labVisit.update({
         where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
-        data: { amountPaid: formatMoney(paid + payment), paymentMethod: input.method },
+        data: {
+          discount: formatMoney(discount),
+          total: formatMoney(total),
+          amountPaid: formatMoney(paid + payment),
+          paymentMethod: input.method,
+        },
       });
       if (visit.clinicVisitId) {
         await transaction.clinicalPayment.create({
@@ -574,6 +605,7 @@ export class LabService {
           entityId: visitId,
           after: {
             amount: formatMoney(payment),
+            discount: formatMoney(discount),
             method: input.method,
             amountPaid: formatMoney(paid + payment),
             remainingBalance: formatMoney(total - paid - payment),

@@ -19,9 +19,11 @@ import type { TenantPrincipal, Workspace } from "../../types";
 export function StaffAccountPage({
   principal,
   workspace,
+  embedded = false,
 }: {
   principal: TenantPrincipal;
   workspace: Workspace;
+  embedded?: boolean;
 }) {
   const client = useQueryClient();
   const [profile, setProfile] = useState({
@@ -61,14 +63,24 @@ export function StaffAccountPage({
     .map((part) => part[0])
     .join("")
     .toUpperCase();
-  const roleName = principal.role === "LAB_TECHNICIAN" ? "Lab Technician" : "Doctor";
+  const roleName =
+    (
+      {
+        DOCTOR: "Doctor",
+        LAB_TECHNICIAN: "Lab Technician",
+        RECEPTIONIST: "Receptionist",
+        PHARMACIST: "Pharmacist",
+      } as Record<string, string>
+    )[principal.role] ?? principal.role.replaceAll("_", " ");
   return (
     <>
-      <PageHeader
-        eyebrow="Account"
-        title="My account"
-        description="Manage your personal information, password, and work access from one secure page."
-      />
+      {!embedded ? (
+        <PageHeader
+          eyebrow="Account"
+          title="My account"
+          description="Manage your personal information, password, and work access from one secure page."
+        />
+      ) : null}
       <section className="mb-6 flex flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center">
         <div className="grid size-20 shrink-0 place-items-center rounded-full bg-emerald-100 text-2xl font-extrabold text-emerald-800">
           {initials}
