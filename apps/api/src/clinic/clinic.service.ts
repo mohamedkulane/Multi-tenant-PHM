@@ -245,7 +245,7 @@ export class ClinicService {
     );
   }
 
-  async visits(principal: AuthenticatedPrincipal, branchId: string) {
+  async visits(principal: AuthenticatedPrincipal, branchId: string, page?: number) {
     requireBranch(principal, branchId);
     return withTenantContext(prisma, { ...principal, branchId }, async (transaction) => {
       const visits = await transaction.clinicVisit.findMany({
@@ -287,8 +287,9 @@ export class ClinicService {
                 : {}),
         },
         include: clinicVisitInclude,
-        orderBy: { createdAt: "desc" },
-        take: 300,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: page === undefined ? 300 : 100,
+        skip: page === undefined ? 0 : page * 100,
       });
       return visits.map((visit) => redactClinicalVisit(principal, visit));
     });

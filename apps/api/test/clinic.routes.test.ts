@@ -27,6 +27,26 @@ function authentication(principal: AuthenticatedPrincipal): AuthService {
 }
 
 describe("clinic workflow routes", () => {
+  it("supports bounded reception history pages without changing the principal scope", async () => {
+    const principal: AuthenticatedPrincipal = { ...basePrincipal, role: "RECEPTIONIST" };
+    const clinic = new ClinicService();
+    const visits = vi.spyOn(clinic, "visits").mockResolvedValue([] as never);
+    const response = await request(createApp({ authentication: authentication(principal), clinic }))
+      .get(`/api/v1/clinic/visits?branchId=${basePrincipal.branchIds[0]}&page=3`)
+      .set("Cookie", "phms_session=test");
+    expect(response.status).toBe(200);
+    expect(visits).toHaveBeenCalledWith(principal, basePrincipal.branchIds[0], 3);
+  });
+  it.each(["-1", "1.5", "invalid", "10001"])("rejects invalid history page %s", async (page) => {
+    const principal: AuthenticatedPrincipal = { ...basePrincipal, role: "RECEPTIONIST" };
+    const clinic = new ClinicService();
+    const visits = vi.spyOn(clinic, "visits");
+    const response = await request(createApp({ authentication: authentication(principal), clinic }))
+      .get(`/api/v1/clinic/visits?branchId=${basePrincipal.branchIds[0]}&page=${page}`)
+      .set("Cookie", "phms_session=test");
+    expect(response.status).toBe(400);
+    expect(visits).not.toHaveBeenCalled();
+  });
   it("loads a lightweight visit summary for the reception dashboard", async () => {
     const principal: AuthenticatedPrincipal = { ...basePrincipal, role: "RECEPTIONIST" };
     const clinic = new ClinicService();

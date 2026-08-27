@@ -1,3 +1,11 @@
+import { useState } from "react";
+import { CatalogPagination } from "../../../components/medicine-browser";
+import {
+  filterReceptionVisits,
+  hasPaidLabReceipt,
+  loadReceptionHistory,
+  receptionVisitStatus,
+} from "../../reception/reception-visits";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -46,12 +54,14 @@ export function RoleDashboardPage({
   branch: Branch | undefined;
   principal: TenantPrincipal;
 }) {
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const clinicVisits = useQuery({
     queryKey: ["clinic-visits", branch?.id, principal.role],
     queryFn: () =>
-      getData<DashboardRow[]>(
-        `/clinic/visits?branchId=${branch!.id}${principal.role === "RECEPTIONIST" ? "&view=summary" : ""}`,
-      ),
+      principal.role === "RECEPTIONIST"
+        ? loadReceptionHistory(branch!.id)
+        : getData<DashboardRow[]>(`/clinic/visits?branchId=${branch!.id}`),
     enabled: Boolean(branch) && ["DOCTOR", "RECEPTIONIST"].includes(principal.role),
     refetchInterval: 30_000,
   });
@@ -204,23 +214,11 @@ export function RoleDashboardPage({
   }
   if (clinicVisits.isLoading) return <LoadingState label="Loading reception dashboard" />;
   if (clinicVisits.error) return <ErrorState error={clinicVisits.error} />;
-  const visits = (clinicVisits.data ?? []).filter(
-    (visit) =>
-      ![
-        "WAITING_FOR_SAMPLE",
-        "WAITING_FOR_LAB",
-        "LAB_IN_PROGRESS",
-        "LAB_RESULTS_READY",
-        "RESULTS_READY",
-        "DOCTOR_REVIEW",
-        "AT_PHARMACY",
-        "COMPLETED",
-      ].includes(dashboardText(visit["status"])),
-  );
+  const visits = clinicVisits.data ?? [];
+  const filtered = filterReceptionVisits(visits, search, "");
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / 10)));
   const doctorQueue = visits.filter((visit) =>
-    ["WAITING_FOR_DOCTOR", "DOCTOR_REVIEW", "LAB_RESULTS_READY"].includes(
-      dashboardText(visit["status"]),
-    ),
+    ["WAITING_FOR_DOCTOR"].includes(dashboardText(visit["status"])),
   ).length;
   const payments = visits.filter((visit) =>
     ["AWAITING_CONSULTATION_PAYMENT", "AWAITING_LAB_PAYMENT"].includes(
@@ -247,9 +245,23 @@ export function RoleDashboardPage({
         <Stat label="Payments required" value={payments} tone="amber" />
         <Stat label="Laboratory queue" value={laboratory} tone="emerald" />
       </div>
-      <Card title="My work queue" description={`${visits.length} patient visits`}>
+      <Card
+        title="All patient visits"
+        description={`${visits.length} visits · View details and reprint receipts at any time`}
+      >
+        <div className="p-5">
+          <input
+            aria-label="Search visits"
+            placeholder="Search patient name, patient number or visit"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
         <div className="overflow-x-auto">
-          {visits.length ? (
+          {filtered.length ? (
             <table className="data-table">
               <thead>
                 <tr>
@@ -261,20 +273,12 @@ export function RoleDashboardPage({
                 </tr>
               </thead>
               <tbody>
-                {visits.map((visit) => (
+                {filtered.slice((currentPage - 1) * 10, currentPage * 10).map((visit) => (
                   <tr key={dashboardText(visit["id"])}>
                     <td className="font-semibold">{dashboardText(visit["visitNumber"])}</td>
                     <td>{dashboardText((visit["patient"] as DashboardRow)?.["name"])}</td>
                     <td>
-                      <StatusBadge
-                        value={
-                          ["LAB_RESULTS_READY", "DOCTOR_REVIEW", "RESULTS_READY"].includes(
-                            dashboardText(visit["status"]),
-                          )
-                            ? "WITH DOCTOR"
-                            : dashboardText(visit["status"])
-                        }
-                      />
+                      <StatusBadge value={receptionVisitStatus(visit)} />
                     </td>
                     <td>{date(visit["createdAt"])}</td>
                     <td>
@@ -284,15 +288,38 @@ export function RoleDashboardPage({
                       >
                         View
                       </Link>
+                      {hasPaidLabReceipt(visit) ? (
+                        <Link
+                          className="btn-secondary mt-2"
+                          to={`/clinic/visits/${dashboardText(visit["id"])}/print/lab-receipt`}
+                        >
+                          <ReceiptText size={16} /> Lab receipt
+                        </Link>
+                      ) : null}
+                      {visit["consultationPaymentStatus"] === "PAID" ? (
+                        <Link
+                          className="btn-secondary mt-2"
+                          to={`/clinic/visits/${dashboardText(visit["id"])}/print/consultation-receipt`}
+                        >
+                          Consultation receipt
+                        </Link>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           ) : (
-            <EmptyState title="Queue is clear" />
+            <EmptyState title="No matching visits" />
           )}
         </div>
+        <CatalogPagination
+          page={currentPage}
+          count={filtered.length}
+          pageSize={10}
+          onChange={setPage}
+          noun="visits"
+        />
       </Card>
     </>
   );

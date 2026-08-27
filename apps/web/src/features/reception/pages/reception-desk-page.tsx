@@ -16,6 +16,13 @@ import {
   money,
 } from "../../../components/ui";
 import type { Branch, Workspace } from "../../../types";
+import { CatalogPagination } from "../../../components/medicine-browser";
+import {
+  filterReceptionVisits,
+  hasPaidLabReceipt,
+  loadReceptionHistory,
+  receptionVisitStatus,
+} from "../reception-visits";
 import { Link } from "../../../lib/navigation";
 import {
   DEFAULT_PAYMENT_METHOD,
@@ -27,8 +34,6 @@ type Row = Record<string, unknown>;
 const text = (value: unknown) =>
   typeof value === "string" || typeof value === "number" ? String(value) : "";
 const rows = (value: unknown): Row[] => (Array.isArray(value) ? (value as Row[]) : []);
-const receptionStatus = (status: string) =>
-  ["LAB_RESULTS_READY", "DOCTOR_REVIEW", "RESULTS_READY"].includes(status) ? "WITH DOCTOR" : status;
 
 export function ReceptionDeskPage({
   branch,
@@ -38,6 +43,9 @@ export function ReceptionDeskPage({
   workspace: Workspace;
 }) {
   const client = useQueryClient();
+  const [search, setSearch] = useState("");
+  const [visitDate, setVisitDate] = useState("");
+  const [page, setPage] = useState(1);
   const configuredPaymentMethods =
     workspace.branding?.paymentMethods ?? PAYMENT_METHOD_OPTIONS.map((option) => option.value);
   const paymentOptions = PAYMENT_METHOD_OPTIONS.filter((option) =>
@@ -75,22 +83,16 @@ export function ReceptionDeskPage({
   const [transactionReference, setTransactionReference] = useState("");
   const visits = useQuery({
     queryKey: ["clinic-visits", branch?.id],
-    queryFn: () => getData<Row[]>(`/clinic/visits?branchId=${branch!.id}`),
+    queryFn: () => loadReceptionHistory(branch!.id),
     enabled: Boolean(branch),
   });
-  const receptionVisits = (visits.data ?? []).filter(
-    (visit) =>
-      ![
-        "WAITING_FOR_SAMPLE",
-        "WAITING_FOR_LAB",
-        "LAB_IN_PROGRESS",
-        "LAB_RESULTS_READY",
-        "RESULTS_READY",
-        "DOCTOR_REVIEW",
-        "AT_PHARMACY",
-        "COMPLETED",
-      ].includes(text(visit["status"])),
+  const receptionVisits = filterReceptionVisits(
+    visits.data ?? [],
+    search,
+    visitDate,
+    branch?.timezone,
   );
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(receptionVisits.length / 10)));
   const patients = useQuery({
     queryKey: ["reception-patients"],
     queryFn: () => getData<Row[]>("/lab/patients"),
@@ -232,9 +234,46 @@ export function ReceptionDeskPage({
         }
       />
       <Card
-        title="Patient flow"
+        title="All patient visits"
         description="Clinical details and laboratory results are hidden from Reception."
       >
+        <div className="flex flex-wrap items-end gap-4 border-b border-slate-100 p-5">
+          <div className="min-w-0 flex-1">
+            <Field label="Search visits">
+              <input
+                placeholder="Patient name, patient number or visit"
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }}
+              />
+            </Field>
+          </div>
+          <Field label="Visit date (optional)">
+            <input
+              type="date"
+              value={visitDate}
+              onChange={(event) => {
+                setVisitDate(event.target.value);
+                setPage(1);
+              }}
+            />
+          </Field>
+          {search || visitDate ? (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => {
+                setSearch("");
+                setVisitDate("");
+                setPage(1);
+              }}
+            >
+              Show all visits
+            </button>
+          ) : null}
+        </div>
         <div className="overflow-x-auto">
           {receptionVisits.length ? (
             <table className="data-table">
@@ -248,7 +287,7 @@ export function ReceptionDeskPage({
                 </tr>
               </thead>
               <tbody>
-                {receptionVisits.map((visit) => {
+                {receptionVisits.slice((currentPage - 1) * 10, currentPage * 10).map((visit) => {
                   const status = text(visit["status"]);
                   const lab = rows(visit["labVisits"])[0];
                   return (
@@ -256,7 +295,7 @@ export function ReceptionDeskPage({
                       <td className="font-semibold">{text(visit["visitNumber"])}</td>
                       <td>{text((visit["patient"] as Row)?.["name"])}</td>
                       <td>
-                        <StatusBadge value={receptionStatus(status)} />
+                        <StatusBadge value={receptionVisitStatus(visit)} />
                         <p className="mt-1 text-xs text-slate-500">
                           {status === "AWAITING_CONSULTATION_PAYMENT"
                             ? "Collect consultation fee"
@@ -275,6 +314,14 @@ export function ReceptionDeskPage({
                           >
                             <Eye size={16} /> View
                           </button>
+                          {visit["consultationPaymentStatus"] === "PAID" ? (
+                            <Link
+                              className="btn-secondary"
+                              to={`/clinic/visits/${text(visit["id"])}/print/consultation-receipt`}
+                            >
+                              <Printer size={16} /> Consultation receipt
+                            </Link>
+                          ) : null}
                           {status === "AWAITING_CONSULTATION_PAYMENT" ? (
                             <button
                               type="button"
@@ -294,14 +341,8 @@ export function ReceptionDeskPage({
                             >
                               <WalletCards size={16} /> Collect lab payment
                             </button>
-                          ) : lab &&
-                            [
-                              "WAITING_FOR_SAMPLE",
-                              "LAB_IN_PROGRESS",
-                              "LAB_RESULTS_READY",
-                              "DOCTOR_REVIEW",
-                              "COMPLETED",
-                            ].includes(status) ? (
+                          ) : null}
+                          {hasPaidLabReceipt(visit) ? (
                             <Link
                               className="btn-secondary"
                               to={`/clinic/visits/${text(visit["id"])}/print/lab-receipt`}
@@ -317,9 +358,19 @@ export function ReceptionDeskPage({
               </tbody>
             </table>
           ) : (
-            <EmptyState title="No visits today" />
+            <EmptyState
+              title="No matching visits"
+              description="Clear the search or date to see earlier visits."
+            />
           )}
         </div>
+        <CatalogPagination
+          page={currentPage}
+          count={receptionVisits.length}
+          pageSize={10}
+          onChange={setPage}
+          noun="visits"
+        />
       </Card>
       <Dialog
         open={Boolean(selectedVisit)}
@@ -345,7 +396,7 @@ export function ReceptionDeskPage({
               <div>
                 <p className="text-xs font-bold text-slate-500 uppercase">Status</p>
                 <div className="mt-1">
-                  <StatusBadge value={receptionStatus(text(selectedVisit["status"]))} />
+                  <StatusBadge value={receptionVisitStatus(selectedVisit)} />
                 </div>
               </div>
             </div>

@@ -94,6 +94,7 @@ const rolePermissions: Record<TenantRole, ReadonlySet<Permission>> = {
   PHARMACIST: new Set([
     "tenant.read",
     "branch.read",
+    "supplier.read",
     "customer.read",
     "customer.manage",
     "clinic.visit.lookup",

@@ -20,3 +20,21 @@ apps/api/prisma/migrations/**/migration_lock.toml
 tmp/
 temp/
 .superdesign/tmp/
+
+# Local design context and historical implementation notes are not release docs.
+.superdesign/init/
+.superdesign/design-system.md
+design-qa.md
+docs/design-qa/
+docs/*COMPLETION.md
+docs/*IMPLEMENTATION_STATUS.md
+docs/*LEGACY_*CHARACTERIZATION.md
+docs/IMPLEMENTATION_PLAN.md
+
+# Deployment secrets, database dumps, and local release artifacts.
+*.dump
+*.backup
+backups/
+*.pem
+*.key
+deploy/*.secret

@@ -103,10 +103,13 @@ export function createClinicRouter(
     requireAnyPermission("clinic.read", "clinic.visit.lookup"),
     async (request, response) => {
       const branchId = uuid.parse(request.query.branchId);
+      const page = z.coerce.number().int().min(0).max(10000).optional().parse(request.query.page);
       const visits =
         request.query.view === "summary"
           ? await service.visitSummaries(request.auth!, branchId)
-          : await service.visits(request.auth!, branchId);
+          : page === undefined
+            ? await service.visits(request.auth!, branchId)
+            : await service.visits(request.auth!, branchId, page);
       response.json({ data: presentClinicalData(request.auth!, visits) });
     },
   );

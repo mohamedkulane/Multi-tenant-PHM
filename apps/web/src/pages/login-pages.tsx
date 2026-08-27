@@ -531,7 +531,7 @@ function HealthcareCarousel() {
     return () => window.clearInterval(interval);
   }, [paused]);
 
-  const slide = slides[activeSlide];
+  const slide = slides[activeSlide] ?? slides[0]!;
 
   return (
     <div
@@ -700,10 +700,10 @@ function LoginField({
   children: ReactNode;
 }) {
   return (
-    <div>
-      <label className="mb-2 block text-[11px] font-bold tracking-[0.035em] text-[#253b61] uppercase">
+    <label className="block">
+      <span className="mb-2 block text-[11px] font-bold tracking-[0.035em] text-[#253b61] uppercase">
         {label}
-      </label>
+      </span>
 
       <div className="flex h-[57px] items-center gap-3">
         <div className="grid h-[57px] w-[57px] shrink-0 place-items-center rounded-lg bg-[#eff5fb] text-[#1d4b91]">
@@ -714,7 +714,7 @@ function LoginField({
           {children}
         </div>
       </div>
-    </div>
+    </label>
   );
 }
 

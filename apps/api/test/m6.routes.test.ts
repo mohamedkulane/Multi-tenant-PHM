@@ -53,6 +53,7 @@ function administration(): PlatformAdminService {
     listPlans: vi.fn().mockResolvedValue([{ code: "starter" }]),
     upsertPlan: vi.fn().mockResolvedValue({ code: "starter" }),
     listTenants: vi.fn().mockResolvedValue([{ id: tenantId }]),
+    updateTenant: vi.fn().mockResolvedValue({}),
     getTenant: vi.fn().mockResolvedValue({ id: tenantId }),
     onboard: vi.fn((_principal: PlatformPrincipal, input: OnboardTenantInput): Promise<unknown> =>
       Promise.resolve({ tenant: { id: tenantId, name: input.name } }),

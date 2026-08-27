@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { ArrowLeft, Printer } from "lucide-react";
 import { getData } from "../api/client";
 import { EmptyState, ErrorState, LoadingState, StatusBadge, date, money } from "../components/ui";
 import { navigate } from "../lib/navigation";
+import { ThermalPaper, type ReceiptPaperWidth } from "../components/thermal-paper";
 import { formatPaymentMethod } from "../lib/payment-methods";
 import type { TenantPrincipal, Workspace } from "../types";
 
@@ -128,15 +130,58 @@ function LabDocument({ visit, workspace }: { visit: Row; workspace: Workspace })
   );
 }
 
-function LabAuthorization({ visit, workspace }: { visit: Row; workspace: Workspace }) {
+function LabAuthorization({
+  visit,
+  workspace,
+  paperWidth,
+}: {
+  visit: Row;
+  workspace: Workspace;
+  paperWidth: ReceiptPaperWidth;
+}) {
+  const cleared = rows(visit["labVisits"]).filter(
+    (lab) =>
+      lab["total"] != null &&
+      lab["amountPaid"] != null &&
+      Number(lab["amountPaid"]) >= Number(lab["total"]),
+  );
+  if (!cleared.length)
+    return (
+      <EmptyState
+        title="No paid laboratory orders"
+        description="Collect the laboratory payment before printing an authorization."
+      />
+    );
+  return (
+    <>
+      {cleared.map((lab) => (
+        <LabAuthorizationOrder
+          key={text(lab["id"])}
+          visit={{ ...visit, labVisits: [lab] }}
+          workspace={workspace}
+          paperWidth={paperWidth}
+        />
+      ))}
+    </>
+  );
+}
+
+function LabAuthorizationOrder({
+  visit,
+  workspace,
+  paperWidth,
+}: {
+  visit: Row;
+  workspace: Workspace;
+  paperWidth: ReceiptPaperWidth;
+}) {
   const lab = rows(visit["labVisits"])[0];
   if (!lab) return <EmptyState title="Laboratory order not found" />;
-  const patient = object(visit["patient"]);
   const actors = object(visit["actors"]);
   const requester = object(actors[text(lab["requestedByMembershipId"])]);
   const cleared = Number(lab["amountPaid"] ?? 0) >= Number(lab["total"] ?? 0);
   return (
-    <article className="clinical-print-sheet clinical-receipt-sheet lab-authorization-sheet">
+    <ThermalPaper width={paperWidth}>
       <Header workspace={workspace} title="LAB ORDER" />
       <section className="lab-authorization-number">
         <span>Laboratory order</span>
@@ -145,7 +190,12 @@ function LabAuthorization({ visit, workspace }: { visit: Row; workspace: Workspa
       <Patient visit={visit} />
       <section className="lab-authorization-requester">
         <span>Requested by</span>
-        <strong>{text(requester["fullName"]) || text(requester["username"]) || "Doctor"}</strong>
+        <strong>
+          {text(requester["name"]) ||
+            text(requester["fullName"]) ||
+            text(requester["username"]) ||
+            "Doctor"}
+        </strong>
       </section>
       <section className={`lab-clearance ${cleared ? "is-cleared" : "is-pending"}`}>
         <span>PAYMENT STATUS</span>
@@ -180,8 +230,8 @@ function LabAuthorization({ visit, workspace }: { visit: Row; workspace: Workspa
           <p>{text(lab["clinicalNotes"])}</p>
         </section>
       ) : null}
-      <footer>No prices or payment amounts are shown on this laboratory authorization.</footer>
-    </article>
+      <footer>Please present this slip to the laboratory for sample collection.</footer>
+    </ThermalPaper>
   );
 }
 
@@ -245,6 +295,7 @@ export function ClinicalPrintPage({
   workspace: Workspace;
   principal: TenantPrincipal;
 }) {
+  const [paperWidth, setPaperWidth] = useState<ReceiptPaperWidth>(80);
   const visit = useQuery({
     queryKey: ["clinic-visit-print", visitId],
     queryFn: () => getData<Row>(`/clinic/visits/${visitId}`),
@@ -284,10 +335,27 @@ export function ClinicalPrintPage({
           <Printer size={16} /> Print
         </button>
       </div>
+      {kind === "lab-receipt" && (
+        <div className="receipt-print-settings print:hidden">
+          <label htmlFor="receipt-paper-width">Receipt paper</label>
+          <select
+            id="receipt-paper-width"
+            value={paperWidth}
+            onChange={(event) => setPaperWidth(event.target.value === "58" ? 58 : 80)}
+          >
+            <option value={80}>80 mm thermal roll</option>
+            <option value={58}>58 mm thermal roll</option>
+          </select>
+          <p>
+            Select the same roll width in your printer settings. Use 100% scale, no margins, and
+            turn browser headers and footers off.
+          </p>
+        </div>
+      )}
       {kind === "lab" ? (
         <LabDocument visit={visit.data} workspace={workspace} />
       ) : kind === "lab-receipt" ? (
-        <LabAuthorization visit={visit.data} workspace={workspace} />
+        <LabAuthorization visit={visit.data} workspace={workspace} paperWidth={paperWidth} />
       ) : (
         <Receipt visit={visit.data} workspace={workspace} type="CONSULTATION" />
       )}

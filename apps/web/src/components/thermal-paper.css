@@ -1,0 +1,208 @@
+/* 80 mm paper / 72 mm content; 58 mm paper / 50 mm content.
+   Conservative 4 mm side margins fit typical thermal printer printable areas. */
+.thermal-receipt.clinical-receipt-sheet {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 0;
+  padding: 4mm;
+  margin: 0 auto 20px;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  color: #111;
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+  line-height: 1.4;
+  box-shadow: 0 2px 12px #00000012;
+  overflow-wrap: anywhere;
+}
+.thermal-receipt .clinical-print-header {
+  display: block;
+  padding: 0 0 3mm;
+  border-bottom: 1px dashed #111;
+}
+.thermal-receipt .clinical-print-brand {
+  display: block;
+  text-align: center;
+}
+.thermal-receipt .clinical-print-brand img,
+.thermal-receipt .clinical-print-logo {
+  width: 9mm;
+  height: 9mm;
+  margin: 0 auto 2mm;
+  border-radius: 0;
+}
+.thermal-receipt .clinical-print-brand h1 {
+  font-size: 14px;
+  line-height: 1.3;
+}
+.thermal-receipt .clinical-print-brand p,
+.thermal-receipt .clinical-print-title span {
+  font-size: 10px;
+  color: #111;
+}
+.thermal-receipt .clinical-print-title {
+  margin-top: 2mm;
+}
+.thermal-receipt .clinical-print-title strong {
+  font-size: 12px;
+  color: #111;
+}
+.thermal-receipt .lab-authorization-number {
+  padding: 2mm 0;
+  margin: 0;
+  border: 0;
+  text-align: left;
+}
+.thermal-receipt .lab-authorization-number strong {
+  font-size: 12px;
+  letter-spacing: 0;
+}
+.thermal-receipt .lab-authorization-number span,
+.thermal-receipt .clinical-print-patient span,
+.thermal-receipt .lab-authorization-requester span {
+  font-size: 9px;
+  color: #444;
+}
+.thermal-receipt .clinical-print-patient {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2mm 3mm;
+  padding: 2mm 0;
+  margin: 0;
+}
+.thermal-receipt .clinical-print-patient > div:first-child {
+  grid-column: 1 / -1;
+}
+.thermal-receipt .clinical-print-patient strong {
+  font-size: 11px;
+  margin-top: 1px;
+}
+.thermal-receipt .lab-authorization-requester {
+  padding: 2mm 0;
+  margin: 0;
+}
+.thermal-receipt .lab-authorization-requester strong {
+  display: block;
+  font-size: 11px;
+}
+.thermal-receipt .lab-clearance {
+  border: 0;
+  border-block: 1px dashed #111;
+  padding: 3mm 0;
+  margin: 2mm 0;
+  background: transparent;
+  color: #111;
+  border-radius: 0;
+}
+.thermal-receipt .lab-clearance span {
+  font-size: 9px;
+}
+.thermal-receipt .lab-clearance strong {
+  display: block;
+  font-size: 13px;
+  margin: 1mm 0;
+}
+.thermal-receipt .lab-clearance p {
+  font-size: 10px;
+  margin: 0;
+  color: #111;
+}
+.thermal-receipt .lab-authorization-tests {
+  padding: 2mm 0;
+}
+.thermal-receipt .lab-authorization-tests h2 {
+  font-size: 11px;
+  margin: 0 0 2mm;
+}
+.thermal-receipt .lab-authorization-tests table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.thermal-receipt .lab-authorization-tests td {
+  font-size: 11px;
+  padding: 2mm 0;
+  border-bottom: 1px dotted #999;
+  vertical-align: top;
+}
+.thermal-receipt .lab-authorization-tests td:last-child {
+  width: 28%;
+  text-align: right;
+  padding-left: 2mm;
+}
+.thermal-receipt .lab-authorization-tests p {
+  font-size: 10px;
+  margin: 2mm 0 0;
+}
+.thermal-receipt .lab-authorization-note {
+  padding: 2mm 0;
+  margin: 0;
+  border: 0;
+  font-size: 10px;
+}
+.thermal-receipt footer {
+  font-size: 9px;
+  color: #444;
+  padding: 2mm 0 0;
+  margin: 2mm 0 0;
+  border-top: 1px dashed #111;
+}
+.thermal-receipt[data-paper-width="58"] .clinical-print-patient {
+  grid-template-columns: 1fr;
+}
+.receipt-print-settings {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 auto 20px;
+  max-width: 620px;
+  font-size: 12px;
+}
+.receipt-print-settings select {
+  width: auto;
+}
+.receipt-print-settings p {
+  width: 100%;
+  color: #64748b;
+  text-align: center;
+}
+@media print {
+  /* Keep only the paper and its ancestors in normal flow; don't clip roll pages
+     inside the fixed sidebar, screen layout, or an absolute print wrapper. */
+  body:has(.thermal-receipt)
+    *:not(:has(.thermal-receipt)):not(.thermal-receipt):not(.thermal-receipt *) {
+    display: none !important;
+  }
+  body:has(.thermal-receipt) *:has(.thermal-receipt) {
+    position: static !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    width: auto !important;
+    max-width: none !important;
+    overflow: visible !important;
+  }
+  body:has(.thermal-receipt) .thermal-receipt {
+    position: static !important;
+    max-width: none !important;
+    padding: 4mm !important;
+    margin: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    break-after: page;
+    print-color-adjust: exact;
+  }
+  body:has(.thermal-receipt) .thermal-receipt:last-child {
+    break-after: auto;
+  }
+  body:has(.thermal-receipt) .thermal-receipt[data-paper-width="80"] {
+    width: 80mm !important;
+  }
+  body:has(.thermal-receipt) .thermal-receipt[data-paper-width="58"] {
+    width: 58mm !important;
+  }
+}

@@ -278,26 +278,26 @@ export function ClinicalVisitPage({
               onChange={(value) => setAssessment({ ...assessment, chiefComplaint: value })}
             />
             <TextArea
-              label="Symptoms: onset, duration, severity"
+              label="Symptoms: onset, duration, severity (optional)"
               value={assessment.symptoms}
               onChange={(value) => setAssessment({ ...assessment, symptoms: value })}
             />
             <TextArea
-              label="History of present illness"
+              label="History of present illness (optional)"
               value={assessment.historyPresentIllness}
               onChange={(value) => setAssessment({ ...assessment, historyPresentIllness: value })}
             />
             <TextArea
-              label="Medical history"
+              label="Medical history (optional)"
               value={assessment.pastMedicalHistory}
               onChange={(value) => setAssessment({ ...assessment, pastMedicalHistory: value })}
             />
             <TextArea
-              label="Surgical history"
+              label="Surgical history (optional)"
               value={assessment.pastSurgicalHistory}
               onChange={(value) => setAssessment({ ...assessment, pastSurgicalHistory: value })}
             />
-            <Field label="Medication status *">
+            <Field label="Medication status (optional)">
               <select
                 value={assessment.medicationStatus}
                 onChange={(event) =>
@@ -321,7 +321,7 @@ export function ClinicalVisitPage({
                 onChange={(value) => setAssessment({ ...assessment, currentMedicines: value })}
               />
             ) : null}
-            <Field label="Allergy status *">
+            <Field label="Allergy status (optional)">
               <select
                 value={assessment.allergyStatus}
                 onChange={(event) =>
@@ -378,10 +378,16 @@ export function ClinicalVisitPage({
       ) : null}
       {section === "examination" ? (
         <div className="space-y-5">
-          <Card title="Vital signs">
-            <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4">
+          <section className="clinical-vitals" aria-labelledby="vital-signs-title">
+            <h2 id="vital-signs-title" className="mb-2 text-lg font-bold">
+              Vital signs
+            </h2>
+            <p className="mb-5 text-sm text-slate-500">
+              Record only the measurements taken. All vital signs are optional.
+            </p>
+            <div className="clinical-vitals-grid">
               {vitals.map(([key, label]) => (
-                <Field key={key} label={label}>
+                <Field key={key} label={label + " (optional)"}>
                   <input
                     inputMode="decimal"
                     value={assessment.vitalSigns[key] ?? ""}
@@ -395,7 +401,7 @@ export function ClinicalVisitPage({
                 </Field>
               ))}
             </div>
-          </Card>
+          </section>
           <Card
             title="Physical examination"
             description="Expand and record only the systems examined."

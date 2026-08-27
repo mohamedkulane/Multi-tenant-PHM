@@ -221,7 +221,13 @@ function TenantApplication({ pathname }: { pathname: string }) {
   } else if (["/reception/visits", "/reception/patients"].includes(pathname))
     page = <ReceptionDeskPage branch={branch} workspace={workspace.data} />;
   else if (pathname === "/products")
-    page = <ProductsPage principal={principal.data} branch={branch} />;
+    page = (
+      <ProductsPage
+        principal={principal.data}
+        branch={branch}
+        currency={workspace.data.tenant.currencyCode}
+      />
+    );
   else if (pathname === "/customers")
     page = <CustomersPage workspace={workspace.data} principal={principal.data} />;
   else if (pathname === "/suppliers") page = <SuppliersPage principal={principal.data} />;
@@ -249,8 +255,15 @@ function TenantApplication({ pathname }: { pathname: string }) {
     );
   } else if (pathname === "/inventory")
     page = <InventoryPage branch={branch} workspace={workspace.data} principal={principal.data} />;
-  else if (pathname === "/sales")
-    page = <SalesPage branch={branch} workspace={workspace.data} principal={principal.data} />;
+  else if (pathname === "/sales" || pathname === "/invoices")
+    page = (
+      <SalesPage
+        branch={branch}
+        workspace={workspace.data}
+        principal={principal.data}
+        mode={pathname === "/invoices" ? "invoices" : "sales"}
+      />
+    );
   else if (pathname === "/debts")
     page = <DebtsPage branch={branch} workspace={workspace.data} principal={principal.data} />;
   else if (pathname === "/expenses")

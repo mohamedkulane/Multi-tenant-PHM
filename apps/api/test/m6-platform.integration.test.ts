@@ -123,6 +123,7 @@ describeDatabase("M6 live PostgreSQL platform administration", () => {
       const result = (await platformAdminService.onboard(superPrincipal, {
         name: "M6 Live Pharmacy",
         slug: fixtureSlug,
+        monthlyFee: "0",
         timezone: "Africa/Nairobi",
         currencyCode: "KES",
         planCode: "starter",

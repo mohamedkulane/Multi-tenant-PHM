@@ -19,7 +19,8 @@ debts, expenses, reports, staff, and audit workflows.
 apps/
   api/     Express API, Prisma, migrations, domain modules and workers
   web/     React application
-docs/      Build plans, decisions and local setup
+docs/      Maintained workflow, security and operations guides
+deploy/    Production database configuration (separate from local development)
 ```
 
 ## Development commands
@@ -42,11 +43,10 @@ database configuration described in `docs/LOCAL_POSTGRESQL_PGADMIN.md`.
 
 M6 adds a separate platform control plane for tenant onboarding, plans, limits,
 branding, suspension and approved read-only support access. See
-`docs/M6_COMPLETION.md` for the complete workflow and
-`docs/M6_PLATFORM_ADMINISTRATION_DESIGN.md` for its security design.
+`docs/M6_PLATFORM_ADMINISTRATION_DESIGN.md` for its workflow and security design.
 
 After migrations, bootstrap the first platform owner with the secure
-`db:bootstrap-platform-admin` workspace command documented in the M6 completion
+`db:bootstrap-platform-admin` workspace command documented in the deployment
 and local PostgreSQL runbooks. Do not store that password in the repository.
 
 ## Application pages
@@ -75,4 +75,12 @@ and platform audit.
 
 - migration/production runbook: `docs/M7_MIGRATION_AND_PRODUCTION_READINESS.md`
 - pilot/rollout runbook: `docs/M8_PILOT_AND_ROLLOUT.md`
-- completion and external execution gates: `docs/M7_M8_COMPLETION.md`
+
+## Production deployment
+
+Follow [Deploy PHMS on VPSDime](docs/DEPLOYMENT_VPSDIME.md) for Ubuntu, Node,
+PostgreSQL roles/migrations, systemd, Nginx, HTTPS, backups, updates and receipt
+printer settings. The root Docker Compose file is for development only.
+
+Historical milestone notes and generated design QA files are kept locally and
+excluded from Git; maintained architecture, clinical and security guides remain.

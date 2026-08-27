@@ -1,23 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BellRing,
-  ChevronLeft,
-  ChevronRight,
   Copy,
   Download,
-  Grid2X2,
-  List,
   Pencil,
   Plus,
   Printer,
   RefreshCw,
   ScanSearch,
   Settings2,
-  Search,
   ShoppingCart,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { navigate } from "../lib/navigation";
+import { MedicineBrowser, ProductCatalog, sellableUnits } from "../components/medicine-browser";
+import { DashboardMetrics } from "../components/dashboard-metrics";
 import {
   Area,
   AreaChart,
@@ -356,55 +354,7 @@ export function DashboardPage({
       {query.error ? <ErrorState error={query.error} /> : null}
       {query.data ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Stat
-              label="Iibka saafiga ah (Net sales)"
-              value={money(cards["netSales"], workspace.tenant.currencyCode)}
-            />
-            <Stat
-              label="Lacagta la qabtay (Collections)"
-              value={money(cards["collected"], workspace.tenant.currencyCode)}
-              tone="blue"
-            />
-            <Stat
-              label="Deynta harsan (Receivables)"
-              value={money(cards["receivables"], workspace.tenant.currencyCode)}
-              tone="amber"
-            />
-            <Stat
-              label="Stock-ga yar (Low stock)"
-              value={text(cards["lowStockProducts"] ?? 0)}
-              tone="rose"
-            />
-          </div>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Stat label="Today's patients" value={text(cards["patientsToday"] ?? 0)} tone="blue" />
-            <Stat
-              label="Patients waiting"
-              value={text(cards["patientsWaiting"] ?? 0)}
-              tone="amber"
-            />
-            <Stat
-              label="Consultation revenue"
-              value={money(cards["consultationRevenue"], workspace.tenant.currencyCode)}
-            />
-            <Stat
-              label="Laboratory revenue"
-              value={money(cards["labRevenue"], workspace.tenant.currencyCode)}
-              tone="blue"
-            />
-            <Stat
-              label="Pharmacy clinical revenue"
-              value={money(cards["pharmacyRevenue"], workspace.tenant.currencyCode)}
-            />
-            <Stat
-              label="Total clinical revenue"
-              value={money(cards["totalRevenue"], workspace.tenant.currencyCode)}
-              tone="emerald"
-            />
-            <Stat label="Completed visits" value={text(cards["completedVisits"] ?? 0)} />
-            <Stat label="Lab tests performed" value={text(cards["labTestsPerformed"] ?? 0)} />
-          </div>
+          <DashboardMetrics cards={cards} currency={workspace.tenant.currencyCode} />
           <div className="mt-6 grid gap-6 xl:grid-cols-2">
             <Card
               title="Socodka iibka (Sales trend)"
@@ -589,12 +539,19 @@ export function DashboardPage({
 export function ProductsPage({
   principal,
   branch,
+  currency = "USD",
 }: {
   principal: TenantPrincipal;
   branch?: Branch | undefined;
+  currency?: string;
 }) {
   const client = useQueryClient();
-  const [search, setSearch] = useState("");
+  const search = "";
+  const catalogStock = useQuery({
+    queryKey: ["inventory", "catalog", branch?.id],
+    queryFn: () => getData<Row[]>(`/inventory/stock?branchId=${branch!.id}`),
+    enabled: Boolean(branch),
+  });
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [branchProduct, setBranchProduct] = useState<Row | null>(null);
@@ -833,7 +790,7 @@ export function ProductsPage({
     <>
       <PageHeader
         eyebrow="Catalog"
-        title="Products and packaging"
+        title="Products & Packaging"
         description="Create products, maintain package prices, and safely deactivate items without deleting transaction history."
         actions={
           canManage ? (
@@ -1096,100 +1053,52 @@ export function ProductsPage({
           </form>
         </Card>
       ) : null}
-      <Card>
-        <div className="action-bar">
-          <input
-            className="input max-w-md"
-            placeholder="Raadi alaab, SKU, ama barcode (Search product)"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <span className="ml-auto text-sm font-semibold text-slate-500">
-            {query.data?.length ?? 0} products
-          </span>
-        </div>
-        {query.isLoading ? (
-          <LoadingState />
-        ) : query.error ? (
-          <ErrorState error={query.error} />
-        ) : (
-          <SimpleTable
-            rows={query.data ?? []}
-            columns={[
-              {
-                label: "Product",
-                render: (row) => (
-                  <div>
-                    <p className="font-bold text-slate-900">{text(row["name"])}</p>
-                    <p className="text-xs text-slate-500">
-                      {text(row["genericName"] ?? row["sku"])}
-                    </p>
-                  </div>
-                ),
-              },
-              { label: "Category", render: (row) => text(row["category"]).replaceAll("_", " ") },
-              { label: "Base unit", render: (row) => text(row["baseUnit"]) },
-              {
-                label: "Packages and prices",
-                render: (row) => (
-                  <div className="flex max-w-xl flex-wrap gap-2">
-                    {rows(row["packages"]).map((pack) => (
-                      <span
-                        key={text(pack["id"])}
-                        className={`rounded-lg border px-2.5 py-1 text-xs font-semibold ${pack["salePrice"] === null ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}
-                      >
-                        {text(pack["label"] ?? pack["code"])}:{" "}
-                        {pack["salePrice"] === null ? "Price required" : text(pack["salePrice"])}
-                      </span>
-                    ))}
-                  </div>
-                ),
-              },
-              {
-                label: "Status",
-                render: (row) => (
-                  <StatusBadge value={row["active"] === false ? "INACTIVE" : "ACTIVE"} />
-                ),
-              },
-              ...(canManage
-                ? [
-                    {
-                      label: "Actions",
-                      render: (row: Row) => (
-                        <div className="flex flex-wrap gap-2">
-                          <button className="btn-secondary" onClick={() => beginEdit(row)}>
-                            <Pencil size={15} /> Wax ka beddel (Edit)
-                          </button>
-                          {canConfigureBranch ? (
-                            <button
-                              className="btn-secondary"
-                              disabled={!branch}
-                              onClick={() => {
-                                setBranchProduct(row);
-                                setBranchConfig({
-                                  active: true,
-                                  minimumStockBaseUnits: "",
-                                  reason: "",
-                                });
-                              }}
-                            >
-                              <Settings2 size={15} /> Branch settings
-                            </button>
-                          ) : null}
-                          {canArchiveGlobally && row["active"] !== false ? (
-                            <button className="btn-danger" onClick={() => setArchiveProduct(row)}>
-                              <Trash2 size={15} /> Archive
-                            </button>
-                          ) : null}
-                        </div>
-                      ),
-                    },
-                  ]
-                : []),
-            ]}
-          />
-        )}
-      </Card>
+      {query.isLoading ? (
+        <LoadingState />
+      ) : query.error ? (
+        <ErrorState error={query.error} />
+      ) : (
+        <ProductCatalog
+          products={query.data ?? []}
+          currency={currency}
+          available={(id) =>
+            catalogStock.data ? sellableUnits(catalogStock.data, id, today) : undefined
+          }
+          actions={(row) =>
+            canManage ? (
+              <>
+                <button type="button" className="btn-secondary" onClick={() => beginEdit(row)}>
+                  <Pencil size={14} /> Edit
+                </button>
+                {canConfigureBranch ? (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={!branch}
+                    onClick={() => {
+                      setBranchProduct(row);
+                      setBranchConfig({ active: true, minimumStockBaseUnits: "", reason: "" });
+                    }}
+                  >
+                    <Settings2 size={14} /> Branch
+                  </button>
+                ) : null}
+                {canArchiveGlobally && row["active"] !== false ? (
+                  <button
+                    type="button"
+                    className="btn-danger"
+                    onClick={() => setArchiveProduct(row)}
+                  >
+                    <Trash2 size={14} /> Archive
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <span>Read only</span>
+            )
+          }
+        />
+      )}
       <Dialog
         open={Boolean(editing)}
         title="Edit product"
@@ -1990,17 +1899,28 @@ export function SalesPage({
   branch,
   workspace,
   principal,
+  mode = "sales",
 }: {
   branch?: Branch | undefined;
   workspace: Workspace;
   principal: TenantPrincipal;
+  mode?: "sales" | "invoices";
 }) {
   const client = useQueryClient();
   const [selectedSale, setSelectedSale] = useState<Row | null>(null);
   const [salesSearch, setSalesSearch] = useState("");
-  const [productSearch, setProductSearch] = useState("");
-  const [productView, setProductView] = useState<"grid" | "list">("list");
-  const [productPage, setProductPage] = useState(1);
+  useEffect(() => {
+    if (mode !== "invoices") {
+      setSaleAction(null);
+      setSelectedSale(null);
+      return;
+    }
+    const saleId = new URLSearchParams(window.location.search).get("sale");
+    if (saleId) {
+      setSelectedSale({ id: saleId });
+      setSaleAction("details");
+    }
+  }, [mode]);
   const [linkedClinicVisitId, setLinkedClinicVisitId] = useState("");
   const [saleAction, setSaleAction] = useState<"details" | "payment" | "return" | "void" | null>(
     null,
@@ -2115,7 +2035,7 @@ export function SalesPage({
         branchId: branch!.id,
         customerId: form.customerId || undefined,
         clinicVisitId: linkedClinicVisitId || undefined,
-        customerName: form.customerName,
+        customerName: form.customerName.trim() || "Walk-in Customer",
         customerPhone: form.customerPhone || undefined,
         discount: form.discount,
         amountPaid: form.amountPaid,
@@ -2131,8 +2051,7 @@ export function SalesPage({
         })),
       }),
     onSuccess: async (sale) => {
-      setSelectedSale(sale);
-      setSaleAction("details");
+      navigate(`/invoices?sale=${text(sale["id"])}`);
       setForm({
         ...form,
         customerId: "",
@@ -2154,18 +2073,6 @@ export function SalesPage({
   const selected = (products.data ?? []).find((item) => text(item["id"]) === form.productId);
   const packages = rows(selected?.["packages"]);
   const selectedPackage = packages.find((item) => text(item["code"]) === form.packageCode);
-  const normalizedProductSearch = productSearch.trim().toLowerCase();
-  const filteredProducts = (products.data ?? []).filter((item) =>
-    [item["name"], item["sku"], item["barcode"], item["category"]].some((value) =>
-      text(value).toLowerCase().includes(normalizedProductSearch),
-    ),
-  );
-  const productsPerPage = productView === "grid" ? 6 : 5;
-  const productPageCount = Math.max(1, Math.ceil(filteredProducts.length / productsPerPage));
-  const visibleProducts = filteredProducts.slice(
-    (productPage - 1) * productsPerPage,
-    productPage * productsPerPage,
-  );
   const stockSummaryForProduct = (productId: string) =>
     (inventoryStock.data ?? []).reduce<{ sellable: number; expired: number }>(
       (summary, batch) => {
@@ -2258,7 +2165,7 @@ export function SalesPage({
     }));
   };
   if (!branch) return <EmptyState title="Choose a branch" />;
-  const invoicesOnly = window.location.pathname === "/invoices";
+  const invoicesOnly = mode === "invoices";
   return (
     <>
       <PageHeader
@@ -2363,21 +2270,27 @@ export function SalesPage({
                       ))}
                   </select>
                 </Field>
-                <Field label="Magaca macmiilka (Customer name)">
+                <Field
+                  label={
+                    balanceDue > 0
+                      ? "Customer name (required for debt)"
+                      : "Customer name (optional)"
+                  }
+                >
                   <input
                     className="input"
                     value={form.customerName}
                     onChange={(event) =>
                       setForm((current) => ({ ...current, customerName: event.target.value }))
                     }
-                    required
+                    required={balanceDue > 0}
                   />
                 </Field>
                 <Field
                   label={
                     balanceDue > 0
                       ? "Telefoonka macmiilka (Required for debt)"
-                      : "Telefoonka macmiilka (Customer phone)"
+                      : "Customer phone (optional)"
                   }
                 >
                   <input
@@ -2394,7 +2307,7 @@ export function SalesPage({
                     }
                   />
                 </Field>
-                <Field label="Taariikhda iyo waqtiga (Date and time)">
+                <Field label="Date and time">
                   <div className="input flex min-h-[42px] items-center bg-slate-50 text-sm text-slate-600">
                     {new Intl.DateTimeFormat("en", {
                       dateStyle: "medium",
@@ -2402,7 +2315,7 @@ export function SalesPage({
                     }).format(new Date())}
                   </div>
                 </Field>
-                <Field label="Lambarka qaansheegta (Invoice number)">
+                <Field label="Invoice number">
                   <div className="input flex min-h-[42px] items-center bg-slate-50 text-sm text-slate-500">
                     Generated at checkout
                   </div>
@@ -2410,184 +2323,58 @@ export function SalesPage({
               </div>
             </section>
 
-            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.65fr)]">
+            <div className="pharmacy-sales-layout">
               <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="border-b border-slate-200 p-4 sm:p-5">
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-700">
-                        Medicine browser
-                      </p>
-                      <h2 className="mt-1 text-xl font-extrabold text-slate-950">
-                        Select products
-                      </h2>
-                    </div>
-                    <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
-                      <button
-                        type="button"
-                        aria-label="List view"
-                        className={`flex items-center gap-2 rounded-lg px-3 py-2 ${productView === "list" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:bg-white"}`}
-                        onClick={() => {
-                          setProductView("list");
-                          setProductPage(1);
-                        }}
-                      >
-                        <List size={18} /> <span className="hidden sm:inline">List</span>
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Grid view"
-                        className={`flex items-center gap-2 rounded-lg px-3 py-2 ${productView === "grid" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:bg-white"}`}
-                        onClick={() => {
-                          setProductView("grid");
-                          setProductPage(1);
-                        }}
-                      >
-                        <Grid2X2 size={17} /> <span className="hidden sm:inline">Grid</span>
-                      </button>
-                    </div>
-                  </div>
-                  <label className="relative block">
-                    <span className="sr-only">Search products</span>
-                    <Search
-                      size={18}
-                      className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"
-                    />
-                    <input
-                      className="input pl-10"
-                      placeholder="Raadi daawo, SKU, barcode ama qayb (Search medicine)"
-                      value={productSearch}
-                      onChange={(event) => {
-                        setProductSearch(event.target.value);
-                        setProductPage(1);
-                      }}
-                    />
-                  </label>
-                </div>
-
-                <div className="p-4 sm:p-5">
-                  {products.isLoading ? (
-                    <LoadingState />
-                  ) : products.error ? (
-                    <ErrorState error={products.error} />
-                  ) : visibleProducts.length ? (
-                    <div
-                      className={
-                        productView === "grid"
-                          ? "grid gap-3 md:grid-cols-2 2xl:grid-cols-3"
-                          : "space-y-3"
-                      }
-                    >
-                      {visibleProducts.map((product) => {
-                        const productId = text(product["id"]);
-                        const productPackages = rows(product["packages"]);
-                        const productStock = stockSummaryForProduct(productId);
-                        const productReserved = reservedBaseUnitsForProduct(productId);
-                        const productAvailable = Math.max(
-                          0,
-                          productStock.sellable - productReserved,
-                        );
-                        const isSelected = form.productId === productId;
-                        return (
-                          <article
-                            key={productId}
-                            className={`rounded-2xl border p-4 transition ${isSelected ? "border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-100" : "border-slate-200 bg-white hover:border-emerald-300 hover:shadow-md"} ${productView === "list" ? "sm:flex sm:items-center sm:justify-between sm:gap-5" : ""}`}
-                          >
-                            <button
-                              type="button"
-                              className="block min-w-0 flex-1 text-left"
-                              onClick={() => chooseProduct(product)}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <h3 className="truncate font-extrabold text-slate-950">
-                                    {text(product["name"])}
-                                  </h3>
-                                  <p className="mt-1 text-xs text-slate-500">
-                                    {text(product["sku"])} | {productAvailable.toLocaleString()}{" "}
-                                    sellable base units
-                                    {productStock.expired > 0
-                                      ? ` | ${productStock.expired.toLocaleString()} expired`
-                                      : ""}
-                                  </p>
-                                </div>
-                                <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-emerald-800">
-                                  {text(product["category"]).replaceAll("_", " ")}
-                                </span>
-                              </div>
-                            </button>
-                            <div
-                              className={`mt-4 flex flex-wrap gap-2 ${productView === "list" ? "sm:mt-0 sm:max-w-[55%] sm:justify-end" : ""}`}
-                            >
-                              {productPackages.map((pack) => {
-                                const packageCode = text(pack["code"]);
-                                const priceMissing =
-                                  pack["salePrice"] === null || pack["salePrice"] === undefined;
-                                const packageUnits = Number(pack["unitsPerPackage"] ?? 0);
-                                const availablePackages =
-                                  packageUnits > 0
-                                    ? Math.floor(productAvailable / packageUnits)
-                                    : 0;
-                                const outOfStock = availablePackages < 1;
-                                return (
-                                  <button
-                                    key={packageCode}
-                                    type="button"
-                                    disabled={priceMissing || outOfStock}
-                                    className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold transition ${isSelected && form.packageCode === packageCode ? "border-emerald-700 bg-emerald-700 text-white" : priceMissing ? "border-amber-200 bg-amber-50 text-amber-700" : outOfStock ? "border-slate-200 bg-slate-100 text-slate-400" : "border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-400 hover:bg-emerald-50"}`}
-                                    onClick={() => chooseProduct(product, packageCode)}
-                                  >
-                                    {text(pack["label"] ?? pack["code"])}:{" "}
-                                    {priceMissing
-                                      ? "No price"
-                                      : `${money(pack["salePrice"], workspace.tenant.currencyCode)} | ${availablePackages} available`}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <EmptyState title="No matching products" />
-                  )}
-
-                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
-                    <p className="text-sm text-slate-500">
-                      Showing {visibleProducts.length} of {filteredProducts.length} products
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        className="btn-icon"
-                        aria-label="Previous product page"
-                        disabled={productPage <= 1}
-                        onClick={() => setProductPage((page) => Math.max(1, page - 1))}
-                      >
-                        <ChevronLeft size={17} />
-                      </button>
-                      <span className="min-w-24 text-center text-sm font-bold text-slate-700">
-                        Page {productPage} of {productPageCount}
-                      </span>
-                      <button
-                        type="button"
-                        className="btn-icon"
-                        aria-label="Next product page"
-                        disabled={productPage >= productPageCount}
-                        onClick={() =>
-                          setProductPage((page) => Math.min(productPageCount, page + 1))
-                        }
-                      >
-                        <ChevronRight size={17} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
+                {products.isLoading ? (
+                  <LoadingState />
+                ) : products.error ? (
+                  <ErrorState error={products.error} />
+                ) : (
+                  <MedicineBrowser
+                    products={products.data ?? []}
+                    currency={workspace.tenant.currencyCode}
+                    available={(id) =>
+                      inventoryStock.data
+                        ? Math.max(
+                            0,
+                            stockSummaryForProduct(id).sellable - reservedBaseUnitsForProduct(id),
+                          )
+                        : undefined
+                    }
+                    onChoose={chooseProduct}
+                    onAdd={(product, pack) => {
+                      const productId = text(product["id"]);
+                      const units = Number(pack["unitsPerPackage"]);
+                      setCart((current) => {
+                        const reserved = current
+                          .filter((line) => line.productId === productId)
+                          .reduce(
+                            (sum, line) =>
+                              sum + Number(line.unitsPerPackage) * line.packageQuantity,
+                            0,
+                          );
+                        if (
+                          !(units > 0) ||
+                          stockSummaryForProduct(productId).sellable - reserved < units ||
+                          pack["salePrice"] == null
+                        )
+                          return current;
+                        return appendSaleCartLine(current, {
+                          productId,
+                          productName: text(product["name"]),
+                          packageCode: text(pack["code"]),
+                          packageLabel: text(pack["label"]),
+                          packageQuantity: 1,
+                          unitPrice: Number(pack["salePrice"]),
+                          unitsPerPackage: String(units),
+                        });
+                      });
+                    }}
+                  />
+                )}
                 <div className="border-t border-emerald-100 bg-emerald-50 p-4 sm:p-5">
                   {selected && selectedPackage ? (
-                    <div className="grid items-end gap-4 sm:grid-cols-[1fr_1fr_120px_auto]">
+                    <div className="grid items-end gap-4 sm:grid-cols-2">
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">
                           Stock preview
@@ -2646,7 +2433,7 @@ export function SalesPage({
                 </div>
               </section>
 
-              <aside className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:sticky xl:top-6">
+              <aside className="pharmacy-sales-cart overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="flex items-center justify-between border-b border-slate-200 p-4 sm:p-5">
                   <div className="flex items-center gap-3">
                     <span className="grid h-10 w-10 place-items-center rounded-xl bg-slate-900 text-white">
@@ -4886,7 +4673,7 @@ export function OperationsPage({ branch }: { branch?: Branch | undefined }) {
               {
                 label: "Actions",
                 render: (row) =>
-                  record(row["metadata"])["readOnly"] ? (
+                  (row["metadata"] as Row | undefined)?.["readOnly"] ? (
                     <StatusBadge value="ADMIN NOTICE" />
                   ) : !row["readAt"] ? (
                     <button

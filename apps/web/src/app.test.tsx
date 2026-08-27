@@ -39,15 +39,15 @@ describe("PHMS application entry points", () => {
   it("renders the tenant sign-in when no pharmacy session exists", async () => {
     window.history.replaceState({}, "", "/login");
     renderApplication();
-    expect(await screen.findByRole("heading", { name: "Pharmacy workspace" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Log In" })).toBeInTheDocument();
     expect(screen.getByLabelText("Organization")).toBeInTheDocument();
   });
 
   it("keeps platform authentication separate", async () => {
     window.history.replaceState({}, "", "/platform/login");
     renderApplication();
-    expect(await screen.findByRole("heading", { name: "Platform control" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Platform email")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Platform Log In" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Platform Email")).toBeInTheDocument();
   });
 
   it("redirects a tenant login immediately and shows a success toast", async () => {
@@ -128,7 +128,7 @@ describe("PHMS application entry points", () => {
     });
     renderApplication();
 
-    fireEvent.change(await screen.findByLabelText("Platform email"), {
+    fireEvent.change(await screen.findByLabelText("Platform Email"), {
       target: { value: "admin@example.test" },
     });
     fireEvent.change(screen.getByLabelText("Password"), {

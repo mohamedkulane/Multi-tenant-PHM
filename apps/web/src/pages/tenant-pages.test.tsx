@@ -67,6 +67,24 @@ describe("tenant product and sales workflows", () => {
 
   afterEach(cleanup);
 
+  it("keeps invoice records separate from the pharmacy checkout", async () => {
+    mockedGetData.mockResolvedValue([]);
+    const view = renderPage(
+      <SalesPage branch={branch} workspace={workspace} principal={principal} mode="invoices" />,
+    );
+    expect(screen.getByRole("heading", { name: "Invoices" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Select products" })).not.toBeInTheDocument();
+    await screen.findByPlaceholderText("Search invoice, customer, or phone");
+    view.unmount();
+    renderPage(
+      <SalesPage branch={branch} workspace={workspace} principal={principal} mode="sales" />,
+    );
+    expect(screen.getByRole("heading", { name: "Pharmacy sales" })).toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("Search invoice, customer, or phone"),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows category-specific package price inputs when creating a product", () => {
     mockedGetData.mockResolvedValue([]);
     renderPage(<ProductsPage principal={principal} branch={branch} />);
@@ -179,16 +197,16 @@ describe("tenant product and sales workflows", () => {
     renderPage(<SalesPage branch={branch} workspace={workspace} principal={principal} />);
 
     await screen.findByRole("heading", { name: "Gloves" });
-    expect(screen.getByPlaceholderText(/Search medicine/)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Search products" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Grid view" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "List view" })).toBeInTheDocument();
-    expect(screen.getByText("Page 1 of 1")).toBeInTheDocument();
+    expect(screen.getByText("1 / 1")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /^Piece:/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Piece" }));
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     expect(await screen.findByText("1 product")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /^Bottle:/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Bottle" }));
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     expect(await screen.findByText("2 products")).toBeInTheDocument();
     expect(screen.getByLabelText(/Discount/)).toBeInTheDocument();

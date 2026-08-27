@@ -64,6 +64,58 @@ function services() {
 }
 
 describe("M12 customer, supplier and laboratory routes", () => {
+  it("allows pharmacists to read suppliers without granting supplier administration", async () => {
+    const pharmacist: AuthenticatedPrincipal = {
+      ...principal,
+      role: "PHARMACIST",
+      allBranches: false,
+      branchIds: [branchId],
+    };
+    const supplier = new SupplierService();
+    const list = vi
+      .spyOn(supplier, "list")
+      .mockResolvedValue([{ id: patientId, name: "Approved supplier", active: true }] as never);
+    const save = vi.spyOn(supplier, "save").mockResolvedValue({} as never);
+    const app = createApp({
+      authentication: { ...authentication, authenticate: vi.fn().mockResolvedValue(pharmacist) },
+      suppliers: supplier,
+    });
+    const response = await request(app).get("/api/v1/suppliers").set("Cookie", "phms_session=test");
+    expect(response.status).toBe(200);
+    expect(response.body.data[0].name).toBe("Approved supplier");
+    expect(list).toHaveBeenCalledWith(pharmacist);
+    const created = await request(app)
+      .post("/api/v1/suppliers")
+      .set("Cookie", "phms_session=test")
+      .send({ name: "Another supplier" });
+    const updated = await request(app)
+      .put(`/api/v1/suppliers/${patientId}`)
+      .set("Cookie", "phms_session=test")
+      .send({ name: "Changed supplier", active: false });
+    expect([created.status, updated.status]).toEqual([403, 403]);
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it.each(["DOCTOR", "RECEPTIONIST", "LAB_TECHNICIAN"] as const)(
+    "keeps supplier records unavailable to %s",
+    async (role) => {
+      const supplier = new SupplierService();
+      const list = vi.spyOn(supplier, "list").mockResolvedValue([]);
+      const app = createApp({
+        authentication: {
+          ...authentication,
+          authenticate: vi.fn().mockResolvedValue({ ...principal, role }),
+        },
+        suppliers: supplier,
+      });
+      const response = await request(app)
+        .get("/api/v1/suppliers")
+        .set("Cookie", "phms_session=test");
+      expect(response.status).toBe(403);
+      expect(list).not.toHaveBeenCalled();
+    },
+  );
+
   it("returns customer accounts and supplier records", async () => {
     const domain = services();
     const app = createApp({
