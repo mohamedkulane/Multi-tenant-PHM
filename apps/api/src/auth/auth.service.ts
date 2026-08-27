@@ -192,7 +192,7 @@ export class PrismaAuthService implements AuthService {
       const [subscription, billingSetting] = await Promise.all([
         transaction.tenantSubscription.findUnique({
           where: { tenantId: directory.tenantId },
-          select: { endsAt: true },
+          select: { endsAt: true, monthlyFee: true },
         }),
         transaction.platformSetting.findUnique({ where: { key: "billing" } }),
       ]);
@@ -213,7 +213,7 @@ export class PrismaAuthService implements AuthService {
           code: "TENANT_SUBSCRIPTION_EXPIRED",
           message: canManageSubscription
             ? "Subscription-ka system-ka wuu dhacay. Bixi " +
-              billingText("monthlyFee", "fee-ga") +
+              subscription.monthlyFee.toString() +
               " " +
               billingText("currencyCode", "") +
               " lambarka " +

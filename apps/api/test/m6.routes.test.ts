@@ -42,6 +42,7 @@ function platformAuth(role: PlatformPrincipal["role"] = "SUPER_ADMIN"): Platform
 function administration(): PlatformAdminService {
   return {
     overview: vi.fn().mockResolvedValue({ cards: {}, charts: {}, alerts: [], recentAudit: [] }),
+    subscriptionCollections: vi.fn().mockResolvedValue({ year: 2026, currencies: [] }),
     listPlatformUsers: vi.fn().mockResolvedValue([]),
     createPlatformUser: vi.fn().mockResolvedValue({}),
     updatePlatformUser: vi.fn().mockResolvedValue({}),

@@ -432,7 +432,11 @@ export function PlatformTenantDetailPage({
     onSuccess: async () => {
       setDialog(null);
       setRenewForm({ months: "1", paymentAmount: "0", paymentReference: "", note: "" });
-      await client.invalidateQueries({ queryKey: ["platform-tenant", tenantId] });
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ["platform-tenant", tenantId] }),
+        client.invalidateQueries({ queryKey: ["platform-tenants"] }),
+        client.invalidateQueries({ queryKey: ["subscription-collections"] }),
+      ]);
     },
   });
   const saveBranding = useMutation({

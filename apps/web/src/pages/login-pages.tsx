@@ -50,37 +50,111 @@ const slides: Array<{
   },
 ];
 
-function NidwaLogo() {
+function TechroLogo() {
   return (
     <div className="flex items-center gap-4">
-      <svg width="58" height="54" viewBox="0 0 58 54" fill="none" aria-hidden="true">
+      <svg width="62" height="56" viewBox="0 0 62 56" fill="none" aria-hidden="true">
         <defs>
           <linearGradient
-            id="nidwa-gradient"
-            x1="3"
-            y1="3"
-            x2="54"
-            y2="52"
+            id="techro-main"
+            x1="8"
+            y1="6"
+            x2="51"
+            y2="49"
             gradientUnits="userSpaceOnUse"
           >
-            <stop stopColor="#9CF1FF" />
-            <stop offset="0.5" stopColor="#FFFFFF" />
+            <stop stopColor="#8EF2FF" />
+            <stop offset="0.48" stopColor="#FFFFFF" />
             <stop offset="1" stopColor="#B7DFFF" />
           </linearGradient>
+
+          <linearGradient
+            id="techro-accent"
+            x1="20"
+            y1="11"
+            x2="43"
+            y2="46"
+            gradientUnits="userSpaceOnUse"
+          >
+            <stop stopColor="#FFFFFF" />
+            <stop offset="1" stopColor="#63DFFF" />
+          </linearGradient>
+
+          <filter id="techro-glow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="2.4" result="blur" />
+            <feColorMatrix
+              in="blur"
+              type="matrix"
+              values="
+                1 0 0 0 0.25
+                0 1 0 0 0.85
+                0 0 1 0 1
+                0 0 0 0.35 0
+              "
+            />
+          </filter>
         </defs>
+
+        {/* subtle glow */}
         <path
-          d="M7 43L19 10C20.5 6 25.8 5.4 28.1 8.7L45.5 33.2L51 17.7"
-          stroke="url(#nidwa-gradient)"
+          d="M9 12.5H51"
+          stroke="#7DE8FF"
           strokeWidth="11"
           strokeLinecap="round"
-          strokeLinejoin="round"
+          opacity="0.28"
+          filter="url(#techro-glow)"
         />
+
+        {/* left top arm */}
+        <path d="M10 12.5H29" stroke="url(#techro-main)" strokeWidth="10" strokeLinecap="round" />
+
+        {/* right top arm */}
+        <path d="M33 12.5H52" stroke="url(#techro-main)" strokeWidth="10" strokeLinecap="round" />
+
+        {/* main T stem */}
+        <path d="M31 14V42" stroke="url(#techro-main)" strokeWidth="10" strokeLinecap="round" />
+
+        {/* futuristic inner cut / highlight */}
+        <path
+          d="M31 18V37"
+          stroke="url(#techro-accent)"
+          strokeWidth="3"
+          strokeLinecap="round"
+          opacity="0.9"
+        />
+
+        {/* tech node */}
+        <circle cx="31" cy="46.5" r="3.5" fill="#8CEEFF" />
+
+        <circle cx="31" cy="46.5" r="1.5" fill="white" />
+
+        {/* small circuit accents */}
+        <path
+          d="M13 23H20"
+          stroke="#B4F5FF"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          opacity="0.7"
+        />
+
+        <circle cx="11" cy="23" r="2" fill="#B4F5FF" opacity="0.8" />
+
+        <path
+          d="M42 23H49"
+          stroke="#B4F5FF"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          opacity="0.7"
+        />
+
+        <circle cx="51" cy="23" r="2" fill="#B4F5FF" opacity="0.8" />
       </svg>
 
       <div>
         <div className="text-[27px] font-bold leading-none tracking-tight text-white">
-          Nidwa ICT
+          Techro ICT
         </div>
+
         <div className="mt-2 text-[9px] font-bold tracking-[0.38em] text-blue-100 uppercase">
           Healthcare Solutions
         </div>
@@ -622,7 +696,7 @@ function LoginFrame({
           <div className="absolute -bottom-40 -left-24 h-[360px] w-[360px] rounded-full bg-cyan-300/[0.10]" />
 
           <div className="relative z-10 px-12 pt-11">
-            <NidwaLogo />
+            <TechroLogo />
           </div>
 
           {platform ? (

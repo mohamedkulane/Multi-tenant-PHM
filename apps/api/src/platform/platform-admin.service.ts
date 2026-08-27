@@ -5,6 +5,7 @@ import { prisma } from "../database/prisma.js";
 import { AppError } from "../errors/app-error.js";
 import { provisionDefaultLabCatalog } from "../lab/default-lab-catalog.js";
 import type { PlatformPrincipal } from "./platform-auth.types.js";
+import { summarizeSubscriptionCollections } from "./subscription-collections.js";
 
 export interface OnboardTenantInput {
   name: string;
@@ -36,7 +37,6 @@ export interface PlatformSettingsInput {
   accentColor: string;
   supportContact?: string | undefined;
   paymentNumber: string;
-  monthlyFee: string;
   currencyCode: string;
   billingInstructions: string;
 }
@@ -66,6 +66,7 @@ export interface PlatformBroadcastInput {
 }
 export interface PlatformAdminService {
   overview(principal: PlatformPrincipal): Promise<unknown>;
+  subscriptionCollections(principal: PlatformPrincipal, year: number): Promise<unknown>;
   listPlatformUsers(principal: PlatformPrincipal): Promise<unknown[]>;
   createPlatformUser(
     principal: PlatformPrincipal,
@@ -261,6 +262,25 @@ async function readTenant(principal: PlatformPrincipal, tenantId: string) {
 }
 
 export class PrismaPlatformAdminService implements PlatformAdminService {
+  async subscriptionCollections(principal: PlatformPrincipal, year: number) {
+    requireSuperAdmin(principal);
+    if (!Number.isInteger(year) || year < 2000 || year > 9998) {
+      throw new AppError({ statusCode: 400, code: "INVALID_YEAR", message: "Choose a valid reporting year" });
+    }
+    return prisma.$transaction(async (transaction) => {
+      await setPlatformWorkflow(transaction, principal);
+      const events = await transaction.platformAuditLog.findMany({
+        where: {
+          action: "TENANT_SUBSCRIPTION_RENEWED",
+          entityType: "tenant_subscription",
+          createdAt: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) },
+        },
+        select: { createdAt: true, after: true },
+      });
+      return summarizeSubscriptionCollections(year, events);
+    });
+  }
+
   async overview(principal: PlatformPrincipal) {
     const tenants = await prisma.tenantLoginDirectory.findMany({ orderBy: { slug: "asc" } });
     const since = new Date();
@@ -1229,7 +1249,6 @@ export class PrismaPlatformAdminService implements PlatformAdminService {
       };
       const billing = {
         paymentNumber: input.paymentNumber.trim(),
-        monthlyFee: input.monthlyFee.trim(),
         currencyCode: input.currencyCode.trim().toUpperCase(),
         instructions: input.billingInstructions.trim(),
       };
@@ -1279,6 +1298,10 @@ export class PrismaPlatformAdminService implements PlatformAdminService {
         });
       }
       const start = current.endsAt && current.endsAt > new Date() ? current.endsAt : new Date();
+      const billingSetting = await transaction.platformSetting.findUnique({ where: { key: "billing" } });
+      const billing = billingSetting?.value as Record<string, unknown> | null | undefined;
+      const currencyCode = typeof billing?.["currencyCode"] === "string" && /^[A-Z]{3}$/.test(billing["currencyCode"])
+        ? billing["currencyCode"] : "USD";
       const endsAt = new Date(start);
       endsAt.setUTCMonth(endsAt.getUTCMonth() + months);
       const subscription = await transaction.tenantSubscription.update({
@@ -1294,7 +1317,7 @@ export class PrismaPlatformAdminService implements PlatformAdminService {
           entityId: tenantId,
           targetTenantId: tenantId,
           before: { endsAt: current.endsAt },
-          after: { endsAt, months, paymentAmount, paymentReference, note },
+          after: { endsAt, months, paymentAmount, currencyCode, paymentReference, note },
           metadata: requestId ? { requestId } : {},
         },
       });

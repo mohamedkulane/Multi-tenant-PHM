@@ -30,6 +30,7 @@ import {
 import { brandChartPalette } from "../lib/chart-colors";
 import { Link } from "../lib/navigation";
 import type { PlatformPrincipal } from "../types";
+import { SubscriptionCollections } from "./subscription-collections";
 
 type Row = Record<string, unknown>;
 const text = (value: unknown) =>
@@ -106,6 +107,7 @@ export function PlatformOverviewPage({ principal }: { principal: PlatformPrincip
           tone="rose"
         />
       </div>
+      {principal.role === "SUPER_ADMIN" ? <SubscriptionCollections /> : null}
       {alerts.length ? (
         <div className="mt-6 grid gap-3 lg:grid-cols-3">
           {alerts.map((alert, index) => (
@@ -719,7 +721,6 @@ export function PlatformSettingsPage({ principal }: { principal: PlatformPrincip
     accentColor: "#B8F39A",
     supportContact: "",
     paymentNumber: "",
-    monthlyFee: "0",
     currencyCode: "USD",
     billingInstructions: "La xiriir platform admin marka aad lacagta dirtid.",
   });
@@ -738,7 +739,6 @@ export function PlatformSettingsPage({ principal }: { principal: PlatformPrincip
       accentColor: text(profile["accentColor"] ?? "#B8F39A"),
       supportContact: profile["supportContact"] ? text(profile["supportContact"]) : "",
       paymentNumber: billing["paymentNumber"] ? text(billing["paymentNumber"]) : "",
-      monthlyFee: text(billing["monthlyFee"] ?? "0"),
       currencyCode: text(billing["currencyCode"] ?? "USD"),
       billingInstructions: text(
         billing["instructions"] ?? "La xiriir platform admin marka aad lacagta dirtid.",
@@ -827,19 +827,9 @@ export function PlatformSettingsPage({ principal }: { principal: PlatformPrincip
         </Card>
         <Card
           title="Monthly subscription"
-          description="This information is shown on an expired pharmacy login."
+          description="Payment contact and instructions for expired subscriptions. Each tenant's amount comes from its Agreed monthly fee."
         >
           <div className="grid gap-4 p-5 sm:grid-cols-2">
-            <Field label="Monthly fee (Qiimaha bishii)">
-              <input
-                className="input"
-                inputMode="decimal"
-                value={form.monthlyFee}
-                onChange={(event) => setForm({ ...form, monthlyFee: event.target.value })}
-                disabled={!editable}
-                required
-              />
-            </Field>
             <Field label="Currency (Lacagta)">
               <input
                 className="input uppercase"
