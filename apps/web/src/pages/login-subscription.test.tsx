@@ -3,10 +3,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { AxiosError } from "axios";
 import { afterEach, expect, it, vi } from "vitest";
 import { sendData } from "../api/client";
+import type * as ApiClient from "../api/client";
 import { TenantLoginPage } from "./login-pages";
 
 vi.mock("../api/client", async (original) => ({
-  ...(await original<typeof import("../api/client")>()),
+  ...(await original<typeof ApiClient>()),
   sendData: vi.fn(),
 }));
 afterEach(cleanup);
@@ -44,7 +45,7 @@ it.each([
     fireEvent.change(screen.getByPlaceholderText("Enter your password"), {
       target: { value: "synthetic-password" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Sign in", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     expect(await screen.findByText(message)).toBeInTheDocument();
     expect(client.getQueryData(["tenant-principal"])).toBeUndefined();
     if (username !== "owner") expect(screen.queryByText(/DEMO-061|50 USD/)).not.toBeInTheDocument();
