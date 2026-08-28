@@ -15,7 +15,11 @@ function app() {
       _request: express.Request,
       response: express.Response,
       _next: express.NextFunction,
-    ) => response.status(error.statusCode ?? 500).json({ error: { code: error.code } }),
+    ) => {
+      // Express identifies error middleware by its four-argument signature.
+      void _next;
+      response.status(error.statusCode ?? 500).json({ error: { code: error.code } });
+    },
   );
   return server;
 }

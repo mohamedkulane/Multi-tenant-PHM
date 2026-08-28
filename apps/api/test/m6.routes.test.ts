@@ -91,6 +91,66 @@ function support(): SupportAccessService {
 }
 
 describe("M6 platform API routes", () => {
+  it("returns subscription collections for the requested year to super admin", async () => {
+    const admin = administration();
+    const collections = vi.spyOn(admin, "subscriptionCollections");
+    const response = await request(
+      createApp({ platformAuthentication: platformAuth(), platformAdministration: admin }),
+    )
+      .get("/api/v1/platform/subscription-collections?year=2025")
+      .set("Cookie", "phms_platform_session=test");
+    expect(response.status).toBe(200);
+    expect(collections).toHaveBeenCalledWith(principal(), 2025);
+  });
+
+  it.each(["ADMIN", "SUPPORT", "AUDITOR"] as const)(
+    "keeps subscription collections private from %s",
+    async (role) => {
+      const admin = administration();
+      const collections = vi.spyOn(admin, "subscriptionCollections");
+      const response = await request(
+        createApp({ platformAuthentication: platformAuth(role), platformAdministration: admin }),
+      )
+        .get("/api/v1/platform/subscription-collections?year=2026")
+        .set("Cookie", "phms_platform_session=test");
+      expect(response.status).toBe(403);
+      expect(collections).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["bad", "2026.5", "1999", "9999"])("rejects invalid reporting year %s", async (year) => {
+    const admin = administration();
+    const collections = vi.spyOn(admin, "subscriptionCollections");
+    const response = await request(
+      createApp({ platformAuthentication: platformAuth(), platformAdministration: admin }),
+    )
+      .get(`/api/v1/platform/subscription-collections?year=${year}`)
+      .set("Cookie", "phms_platform_session=test");
+    expect(response.status).toBe(400);
+    expect(collections).not.toHaveBeenCalled();
+  });
+
+  it("saves settings without requiring the removed global fee", async () => {
+    const admin = administration();
+    const updateSettings = vi.spyOn(admin, "updateSettings");
+    const settings = {
+      displayName: "PHMS",
+      primaryColor: "#123456",
+      accentColor: "#654321",
+      paymentNumber: "TEST-PAYMENT",
+      currencyCode: "USD",
+      billingInstructions: "Contact support",
+    };
+    const response = await request(
+      createApp({ platformAuthentication: platformAuth(), platformAdministration: admin }),
+    )
+      .put("/api/v1/platform/settings")
+      .set("Cookie", "phms_platform_session=test")
+      .send(settings);
+    expect(response.status).toBe(200);
+    expect(updateSettings).toHaveBeenCalledWith(principal(), settings, expect.any(String));
+  });
+
   it("uses a separate hardened cookie for platform login", async () => {
     const response = await request(createApp({ platformAuthentication: platformAuth() }))
       .post("/api/v1/platform/auth/login")

@@ -150,6 +150,7 @@ describe("M4 API routes", () => {
     "rejects unsupported new sale payment method %s",
     async (method) => {
       const sales = fakeSales();
+      const addPayment = vi.spyOn(sales, "addPayment");
       const response = await request(createApp({ authentication, sales, expenses: fakeExpenses() }))
         .post(`/api/v1/sales/${saleId}/payments`)
         .set("Cookie", "phms_session=test")
@@ -160,7 +161,7 @@ describe("M4 API routes", () => {
         code: "UNSUPPORTED_PAYMENT_METHOD",
         message: "Unsupported payment method. Choose EVC-Plus, E-Dahab, or Salaam Bank.",
       });
-      expect(sales.addPayment).not.toHaveBeenCalled();
+      expect(addPayment).not.toHaveBeenCalled();
     },
   );
 

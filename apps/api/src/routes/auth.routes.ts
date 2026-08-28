@@ -65,9 +65,9 @@ export function createAuthRouter(service: AuthService) {
     standardHeaders: "draft-8",
     legacyHeaders: false,
     skip: () => env.NODE_ENV === "test",
-    handler: async (request, response) => {
+    handler: (request, response, next) => {
       const body = request.body as Record<string, unknown>;
-      await safeSecurityAudit(service, {
+      void safeSecurityAudit(service, {
         action: "AUTH_LOGIN_RATE_LIMITED",
         ...(typeof body["tenantSlug"] === "string" ? { tenantSlug: body["tenantSlug"] } : {}),
         ...(typeof body["username"] === "string" ? { username: body["username"] } : {}),
@@ -76,13 +76,16 @@ export function createAuthRouter(service: AuthService) {
           ? { userAgent: safeUserAgent(request.header("user-agent"))! }
           : {}),
         metadata: { route: "/api/v1/auth/login" },
-      });
-      response.status(429).json({
-        error: {
-          code: "TOO_MANY_LOGIN_ATTEMPTS",
-          message: "Too many login attempts; try again later",
-        },
-      });
+      })
+        .then(() => {
+          response.status(429).json({
+            error: {
+              code: "TOO_MANY_LOGIN_ATTEMPTS",
+              message: "Too many login attempts; try again later",
+            },
+          });
+        })
+        .catch(next);
     },
   });
 
@@ -122,8 +125,8 @@ export function createAuthRouter(service: AuthService) {
     legacyHeaders: false,
     keyGenerator: (request) =>
       `${request.auth?.membershipId ?? "anonymous"}:${ipKeyGenerator(request.ip ?? "")}`,
-    handler: async (request, response) => {
-      await safeSecurityAudit(service, {
+    handler: (request, response, next) => {
+      void safeSecurityAudit(service, {
         action: "PASSWORD_CHANGE_RATE_LIMITED",
         ...(request.auth ? { principal: request.auth } : {}),
         ...(request.ip ? { ipAddress: request.ip } : {}),
@@ -131,13 +134,16 @@ export function createAuthRouter(service: AuthService) {
           ? { userAgent: safeUserAgent(request.header("user-agent"))! }
           : {}),
         metadata: { route: "/api/v1/auth/change-password" },
-      });
-      response.status(429).json({
-        error: {
-          code: "PASSWORD_CHANGE_RATE_LIMITED",
-          message: "Too many password-change attempts; try again later",
-        },
-      });
+      })
+        .then(() => {
+          response.status(429).json({
+            error: {
+              code: "PASSWORD_CHANGE_RATE_LIMITED",
+              message: "Too many password-change attempts; try again later",
+            },
+          });
+        })
+        .catch(next);
     },
   });
 

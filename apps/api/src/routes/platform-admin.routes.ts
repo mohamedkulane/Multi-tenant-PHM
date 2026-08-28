@@ -61,10 +61,22 @@ export function createPlatformAdminRouter(
     response.json({ data: await administration.overview(request.platformAuth!) });
   });
 
-  router.get("/subscription-collections", requirePlatformRole("SUPER_ADMIN"), async (request, response) => {
-    const year = z.coerce.number().int().min(2000).max(9998).default(new Date().getUTCFullYear()).parse(request.query["year"]);
-    response.json({ data: await administration.subscriptionCollections(request.platformAuth!, year) });
-  });
+  router.get(
+    "/subscription-collections",
+    requirePlatformRole("SUPER_ADMIN"),
+    async (request, response) => {
+      const year = z.coerce
+        .number()
+        .int()
+        .min(2000)
+        .max(9998)
+        .default(new Date().getUTCFullYear())
+        .parse(request.query["year"]);
+      response.json({
+        data: await administration.subscriptionCollections(request.platformAuth!, year),
+      });
+    },
+  );
 
   router.get("/settings", async (request, response) => {
     response.json({ data: await administration.getSettings(request.platformAuth!) });

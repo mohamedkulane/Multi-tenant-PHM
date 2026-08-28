@@ -265,7 +265,11 @@ export class PrismaPlatformAdminService implements PlatformAdminService {
   async subscriptionCollections(principal: PlatformPrincipal, year: number) {
     requireSuperAdmin(principal);
     if (!Number.isInteger(year) || year < 2000 || year > 9998) {
-      throw new AppError({ statusCode: 400, code: "INVALID_YEAR", message: "Choose a valid reporting year" });
+      throw new AppError({
+        statusCode: 400,
+        code: "INVALID_YEAR",
+        message: "Choose a valid reporting year",
+      });
     }
     return prisma.$transaction(async (transaction) => {
       await setPlatformWorkflow(transaction, principal);
@@ -273,7 +277,10 @@ export class PrismaPlatformAdminService implements PlatformAdminService {
         where: {
           action: "TENANT_SUBSCRIPTION_RENEWED",
           entityType: "tenant_subscription",
-          createdAt: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) },
+          createdAt: {
+            gte: new Date(Date.UTC(year, 0, 1)),
+            lt: new Date(Date.UTC(year + 1, 0, 1)),
+          },
         },
         select: { createdAt: true, after: true },
       });
@@ -1298,10 +1305,14 @@ export class PrismaPlatformAdminService implements PlatformAdminService {
         });
       }
       const start = current.endsAt && current.endsAt > new Date() ? current.endsAt : new Date();
-      const billingSetting = await transaction.platformSetting.findUnique({ where: { key: "billing" } });
+      const billingSetting = await transaction.platformSetting.findUnique({
+        where: { key: "billing" },
+      });
       const billing = billingSetting?.value as Record<string, unknown> | null | undefined;
-      const currencyCode = typeof billing?.["currencyCode"] === "string" && /^[A-Z]{3}$/.test(billing["currencyCode"])
-        ? billing["currencyCode"] : "USD";
+      const currencyCode =
+        typeof billing?.["currencyCode"] === "string" && /^[A-Z]{3}$/.test(billing["currencyCode"])
+          ? billing["currencyCode"]
+          : "USD";
       const endsAt = new Date(start);
       endsAt.setUTCMonth(endsAt.getUTCMonth() + months);
       const subscription = await transaction.tenantSubscription.update({

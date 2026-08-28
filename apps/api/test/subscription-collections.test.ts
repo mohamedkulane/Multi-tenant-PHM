@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { summarizeSubscriptionCollections } from "../src/platform/subscription-collections.js";
 
 const payment = (at: string, paymentAmount: unknown, currencyCode?: string) => ({
-  createdAt: new Date(at), after: { paymentAmount, currencyCode },
+  createdAt: new Date(at),
+  after: { paymentAmount, currencyCode },
 });
 
 describe("subscription collections", () => {
@@ -15,12 +16,17 @@ describe("subscription collections", () => {
     ]);
     expect(report.currencies[0]).toMatchObject({ total: "60.3000", paymentCount: 3 });
     expect(report.currencies[0]?.months).toHaveLength(12);
-    expect(report.currencies[0]?.months[7]).toEqual({ month: "2026-08", amount: "0.3000", paymentCount: 2 });
+    expect(report.currencies[0]?.months[7]).toEqual({
+      month: "2026-08",
+      amount: "0.3000",
+      paymentCount: 2,
+    });
     expect(report.currencies[0]?.months[0]).toMatchObject({ amount: "0.0000", paymentCount: 0 });
   });
   it("separates currencies and does not relabel legacy payments using current settings", () => {
     const report = summarizeSubscriptionCollections(2026, [
-      payment("2026-01-01", "50", "USD"), payment("2026-01-01", "5000", "KES"),
+      payment("2026-01-01", "50", "USD"),
+      payment("2026-01-01", "5000", "KES"),
       payment("2026-01-01", "30"),
     ]);
     expect(report.currencies.map(({ currencyCode, total }) => ({ currencyCode, total }))).toEqual([
@@ -34,7 +40,8 @@ describe("subscription collections", () => {
       payment("2025-12-31T23:59:59Z", "10", "USD"),
       payment("2026-12-31T23:59:59Z", "20", "USD"),
       payment("2027-01-01T00:00:00Z", "30", "USD"),
-      payment("2026-01-01", "bad", "USD"), payment("2026-01-01", "-5", "USD"),
+      payment("2026-01-01", "bad", "USD"),
+      payment("2026-01-01", "-5", "USD"),
     ]);
     expect(report.currencies[0]).toMatchObject({ total: "20.0000", paymentCount: 1 });
     expect(report.invalidPaymentCount).toBe(2);
