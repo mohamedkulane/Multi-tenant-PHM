@@ -73,6 +73,8 @@ model PlatformUser {
   userId    String       @id @map("user_id") @db.Uuid
   role      PlatformRole
   active    Boolean      @default(true)
+  verifiedEmail String? @map("verified_email") @db.VarChar(320)
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(3)
   createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 

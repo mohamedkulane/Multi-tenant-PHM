@@ -38,20 +38,29 @@ const group = (currencyCode: string, total: string) => ({
   })),
 });
 
-it("shows every month and separates currency totals", async () => {
+it("keeps monthly rows collapsed until requested and separates currencies", async () => {
   vi.mocked(getData).mockResolvedValue({
     year,
     invalidPaymentCount: 0,
     currencies: [group("USD", "75.50"), group("UNSPECIFIED", "40")],
   });
   renderPage(<SubscriptionCollections />);
-  expect(await screen.findByText(`August ${year}`)).toBeInTheDocument();
+  await screen.findByText(`Collected in ${year}`, {}, { timeout: 5000 });
+  expect(screen.getByRole("button", { name: "View monthly details" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Choose month"), { target: { value: "7" } });
+  fireEvent.click(screen.getByRole("button", { name: "View monthly details" }));
   expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(13);
-  expect(screen.getAllByText("75.50 USD")).toHaveLength(2);
+  expect(screen.getAllByText("75.50 USD").length).toBeGreaterThanOrEqual(2);
   fireEvent.change(screen.getByLabelText("Payment currency"), { target: { value: "UNSPECIFIED" } });
   expect(screen.queryByText("75.50 USD")).not.toBeInTheDocument();
-  expect(screen.getAllByText("40.00")).toHaveLength(2);
+  expect(screen.getAllByText("40.00").length).toBeGreaterThanOrEqual(2);
   expect(screen.getByText(/Older payments without a recorded currency/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Hide monthly details" }));
+  expect(screen.queryByRole("table")).not.toBeInTheDocument();
 });
 
 it("changes reporting year and shows an honest empty state", async () => {

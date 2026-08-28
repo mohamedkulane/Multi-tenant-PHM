@@ -1050,6 +1050,17 @@ export function PlatformLoginPage() {
           <ShieldCheck size={19} />
           {pending ? "Signing in..." : "Sign in securely"}
         </button>
+        <div className="flex flex-wrap justify-between gap-3 text-sm">
+          <a
+            className="font-semibold text-blue-700 hover:underline"
+            href="/platform/forgot-password"
+          >
+            Forgot password?
+          </a>
+          <a className="text-slate-600 hover:underline" href="/platform/request-verification">
+            Verify my email
+          </a>
+        </div>
       </form>
     </LoginFrame>
   );

@@ -117,6 +117,24 @@ describe("PHMS application entry points", () => {
     mockedGetData.mockImplementation(async (url: string) => {
       await Promise.resolve();
       if (url === "/platform/auth/me") throw new Error("No active session");
+      if (url === "/platform/overview")
+        return {
+          cards: {
+            activeTenants: 2,
+            totalTenants: 2,
+            activeTenantUsers: 6,
+            activeBranches: 2,
+            salesLast30Days: 2,
+            activeProducts: 4,
+            pendingSupport: 0,
+            activePlatformSessions: 1,
+          },
+          charts: { tenantGrowth: [], tenantStatuses: [{ label: "ACTIVE", value: 2 }] },
+          alerts: [],
+          recentAudit: [],
+        };
+      if (url.startsWith("/platform/subscription-collections"))
+        return { year: new Date().getUTCFullYear(), currencies: [], invalidPaymentCount: 0 };
       return [];
     });
     mockedSendData.mockResolvedValue({
@@ -137,7 +155,9 @@ describe("PHMS application entry points", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign in securely" }));
 
     expect(await screen.findByText("Login successful")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Platform overview" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Your platform, at a glance." }),
+    ).toBeInTheDocument();
     await waitFor(() => expect(window.location.pathname).toBe("/platform/dashboard"));
   });
 });

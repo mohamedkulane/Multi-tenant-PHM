@@ -436,3 +436,7 @@ does not untrack them. Local excluded docs remain available to their owner.
 Removing a file in a new commit does not erase old Git history or revoke secrets:
 rotate any credential that was exposed; never reuse development credentials on
 the VPS. Review `git diff --cached --name-status` before a deliberate push.
+
+## Platform email verification and recovery
+
+Before enabling password recovery, follow [Platform email recovery setup](PLATFORM_EMAIL_RECOVERY.md) to configure the SMTP sender, public web URL, migration, and mailbox smoke tests. Never commit SMTP credentials. Existing platform administrators must verify their registered email before requesting a reset link.

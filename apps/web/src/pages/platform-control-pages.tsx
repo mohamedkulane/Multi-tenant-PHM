@@ -1,18 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound, Plus, Send, ShieldCheck, UserCog } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
-import {
-  Area,
-  AreaChart,
-  Cell,
-  Pie,
-  PieChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { errorMessage, getData, sendData } from "../api/client";
 import {
   Card,
@@ -27,10 +15,7 @@ import {
   StatusBadge,
   SuccessMessage,
 } from "../components/ui";
-import { brandChartPalette } from "../lib/chart-colors";
-import { Link } from "../lib/navigation";
 import type { PlatformPrincipal } from "../types";
-import { SubscriptionCollections } from "./subscription-collections";
 
 type Row = Record<string, unknown>;
 const text = (value: unknown) =>
@@ -41,192 +26,7 @@ const rows = (value: unknown): Row[] => (Array.isArray(value) ? (value as Row[])
 const record = (value: unknown): Row =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Row) : {};
 
-export function PlatformOverviewPage({ principal }: { principal: PlatformPrincipal }) {
-  const query = useQuery({
-    queryKey: ["platform-overview"],
-    queryFn: () => getData<Row>("/platform/overview"),
-    refetchInterval: 60_000,
-  });
-  const settings = useQuery({
-    queryKey: ["platform-settings"],
-    queryFn: () => getData<Row>("/platform/settings"),
-  });
-  if (query.isLoading) return <LoadingState label="Loading platform intelligence" />;
-  if (query.error) return <ErrorState error={query.error} />;
-  const data = query.data ?? {};
-  const cards = record(data["cards"]);
-  const charts = record(data["charts"]);
-  const profile = record(settings.data?.["platform_profile"]);
-  const chartColors = brandChartPalette(
-    text(profile["primaryColor"] ?? "#0D2926"),
-    text(profile["accentColor"] ?? "#B8F39A"),
-  );
-  const alerts = rows(data["alerts"]);
-  const tenantStatuses = rows(charts["tenantStatuses"]);
-  const tenantStatusTotal = tenantStatuses.reduce(
-    (total, status) => total + Number(status["value"] ?? 0),
-    0,
-  );
-  const audit = rows(data["recentAudit"]);
-  return (
-    <>
-      <PageHeader
-        eyebrow="Control plane"
-        title="Platform overview"
-        description="Live tenant health, adoption, capacity, security sessions, and actions requiring attention."
-        actions={
-          principal.role === "SUPER_ADMIN" ? (
-            <Link className="btn-primary" to="/platform/tenants/new">
-              <Plus size={17} /> Onboard tenant
-            </Link>
-          ) : undefined
-        }
-      />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat
-          label="Active tenants"
-          value={text(cards["activeTenants"] ?? 0)}
-          detail={`${text(cards["totalTenants"] ?? 0)} total organizations`}
-        />
-        <Stat
-          label="Tenant users"
-          value={text(cards["activeTenantUsers"] ?? 0)}
-          detail={`${text(cards["activeBranches"] ?? 0)} active branches`}
-          tone="blue"
-        />
-        <Stat
-          label="Sales / 30 days"
-          value={text(cards["salesLast30Days"] ?? 0)}
-          detail={`${text(cards["activeProducts"] ?? 0)} active products`}
-          tone="amber"
-        />
-        <Stat
-          label="Pending support"
-          value={text(cards["pendingSupport"] ?? 0)}
-          detail={`${text(cards["activePlatformSessions"] ?? 0)} platform sessions`}
-          tone="rose"
-        />
-      </div>
-      {principal.role === "SUPER_ADMIN" ? <SubscriptionCollections /> : null}
-      {alerts.length ? (
-        <div className="mt-6 grid gap-3 lg:grid-cols-3">
-          {alerts.map((alert, index) => (
-            <div
-              key={`${text(alert["title"])}-${index}`}
-              className="rounded-2xl border border-amber-200 bg-amber-50 p-4"
-            >
-              <p className="font-bold text-amber-950">{text(alert["title"])}</p>
-              <p className="mt-1 text-sm text-amber-800">{text(alert["message"])}</p>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <Card
-          title="Tenant growth"
-          description="New organizations onboarded during the last six months."
-        >
-          <div className="h-80 p-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={rows(charts["tenantGrowth"])}>
-                <defs>
-                  <linearGradient id="platformGrowth" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={chartColors[0]} stopOpacity={0.35} />
-                    <stop offset="95%" stopColor={chartColors[1]} stopOpacity={0.04} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" tickLine={false} axisLine={false} />
-                <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
-                <Tooltip />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke={chartColors[0]}
-                  strokeWidth={3}
-                  fill="url(#platformGrowth)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-        <Card
-          title="Tenant lifecycle"
-          description="All organizations grouped by operating status, including zero-count statuses."
-        >
-          <div className="p-4">
-            <div className="h-60">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={tenantStatuses.filter((status) => Number(status["value"] ?? 0) > 0)}
-                    dataKey="value"
-                    nameKey="label"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={58}
-                    outerRadius={92}
-                    paddingAngle={4}
-                    isAnimationActive
-                    animationDuration={900}
-                  >
-                    {tenantStatuses
-                      .filter((status) => Number(status["value"] ?? 0) > 0)
-                      .map((row, index) => (
-                        <Cell
-                          key={text(row["label"])}
-                          fill={chartColors[index % chartColors.length] ?? chartColors[0]}
-                        />
-                      ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => [Number(value), "Tenants"]} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {tenantStatuses.map((status, index) => {
-                const value = Number(status["value"] ?? 0);
-                const percentage = tenantStatusTotal
-                  ? Math.round((value / tenantStatusTotal) * 100)
-                  : 0;
-                return (
-                  <div
-                    key={text(status["label"])}
-                    className="rounded-xl border border-slate-200 p-3"
-                  >
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-600">
-                      <span
-                        className="size-2.5 rounded-full"
-                        style={{
-                          backgroundColor:
-                            chartColors[index % chartColors.length] ?? chartColors[0],
-                        }}
-                      />
-                      {text(status["label"])}
-                    </div>
-                    <p className="mt-1 text-lg font-black text-slate-950">{value}</p>
-                    <p className="text-xs text-slate-500">{percentage}% of all tenants</p>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </Card>
-      </div>
-      <Card title="Recent security and administration activity" className="mt-6">
-        <SimpleTable
-          rows={audit}
-          columns={[
-            { label: "Time", render: (row) => date(row["createdAt"]) },
-            { label: "Action", render: (row) => text(row["action"]).replaceAll("_", " ") },
-            { label: "Entity", render: (row) => text(row["entityType"]) },
-            { label: "Tenant", render: (row) => text(row["targetTenantId"]) },
-          ]}
-        />
-      </Card>
-    </>
-  );
-}
+export { PlatformOverviewPage } from "./platform-overview-page";
 
 export function PlatformAdministratorsPage() {
   const client = useQueryClient();

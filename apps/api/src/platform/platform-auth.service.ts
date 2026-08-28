@@ -33,6 +33,7 @@ export class PrismaPlatformAuthService implements PlatformAuthService {
 
     return prisma.$transaction(async (transaction) => {
       await setPlatformUser(transaction, directory.userId);
+      await transaction.$queryRaw`SELECT id FROM public.users WHERE id = ${directory.userId}::uuid FOR UPDATE`;
       const [user, access] = await Promise.all([
         transaction.user.findUnique({
           where: { id: directory.userId },
@@ -87,6 +88,7 @@ export class PrismaPlatformAuthService implements PlatformAuthService {
           email: user.email,
           fullName: user.fullName,
           role: access.role,
+          emailVerified: Boolean(access.emailVerifiedAt && access.verifiedEmail === user.email),
         },
       };
     });
@@ -135,6 +137,7 @@ export class PrismaPlatformAuthService implements PlatformAuthService {
         email: user.email,
         fullName: user.fullName,
         role: access.role,
+        emailVerified: Boolean(access.emailVerifiedAt && access.verifiedEmail === user.email),
       } satisfies PlatformPrincipal;
     });
   }

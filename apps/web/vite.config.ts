@@ -13,6 +13,9 @@ export default defineConfig({
     port: 4173,
   },
   test: {
+    // Avoid competing jsdom workers starving React query notifications on small CI/VPS machines.
+    fileParallelism: false,
+    testTimeout: 10_000,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     css: true,

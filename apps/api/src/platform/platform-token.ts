@@ -4,7 +4,10 @@ import { hashSessionSecret } from "../auth/session-token.js";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const secretPattern = /^[A-Za-z0-9_-]{43}$/;
 
-export function createPlatformToken(prefix: "platform" | "support", ids: string[]) {
+export function createPlatformToken(
+  prefix: "platform" | "support" | "verify" | "reset",
+  ids: string[],
+) {
   const secret = randomBytes(32).toString("base64url");
   return {
     raw: [prefix, ...ids, secret].join("."),
@@ -14,7 +17,7 @@ export function createPlatformToken(prefix: "platform" | "support", ids: string[
 
 export function parsePlatformToken(
   raw: string | undefined,
-  prefix: "platform" | "support",
+  prefix: "platform" | "support" | "verify" | "reset",
   idCount: number,
 ) {
   if (!raw) return null;

@@ -6,6 +6,20 @@ enum SupportRequestStatus {
   EXPIRED
 }
 
+model PlatformRecoveryToken {
+  userId String @map("user_id") @db.Uuid
+  purpose String @db.VarChar(20)
+  email String @db.VarChar(320)
+  tokenHash String @unique @map("token_hash") @db.Char(64)
+  tokenVersion Int @map("token_version")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([userId, purpose])
+  @@map("platform_recovery_tokens")
+}
+
 model PlatformLoginDirectory {
   userId    String   @id @map("user_id") @db.Uuid
   email     String   @unique @db.VarChar(320)

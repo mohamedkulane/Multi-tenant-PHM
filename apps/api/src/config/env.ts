@@ -29,6 +29,16 @@ const environmentSchema = z.object({
     .default(12),
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(2).default(0),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
+  PLATFORM_WEB_URL: z.url().optional(),
+  SMTP_HOST: z.string().min(1).optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  SMTP_SECURE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  SMTP_USER: z.string().min(1).optional(),
+  SMTP_PASSWORD: z.string().min(1).optional(),
+  SMTP_FROM: z.email().optional(),
 });
 
 const result = environmentSchema.safeParse(process.env);

@@ -1,5 +1,6 @@
 import type { ErrorRequestHandler } from "express";
 import { ZodError } from "zod";
+import { Prisma } from "@prisma/client";
 import { AppError } from "../errors/app-error.js";
 import { logger } from "../lib/logger.js";
 import { UNSUPPORTED_PAYMENT_METHOD_MESSAGE } from "../payments/payment-methods.js";
@@ -13,6 +14,41 @@ export const errorHandler: ErrorRequestHandler = (error, request, response, next
   const locals = response.locals as ResponseLocals;
   const requestId = locals.requestId;
 
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    const problems: Record<string, { status: number; code: string; message: string }> = {
+      P2002: {
+        status: 409,
+        code: "DUPLICATE_RECORD",
+        message:
+          "A record with these details already exists. Check the existing record or use different details.",
+      },
+      P2003: {
+        status: 409,
+        code: "RELATED_RECORD_CONFLICT",
+        message:
+          "This record is linked to other records, or a selected record no longer exists. Refresh your selection; archive linked records instead of deleting them.",
+      },
+      P2025: {
+        status: 404,
+        code: "RECORD_NOT_FOUND",
+        message: "This record no longer exists. Refresh the page and select another record.",
+      },
+      P2034: {
+        status: 409,
+        code: "CONCURRENT_MODIFICATION",
+        message:
+          "Another request changed this record. Refresh and review the latest details before trying again.",
+      },
+    };
+    const problem = problems[error.code];
+    if (problem) {
+      response
+        .status(problem.status)
+        .json({ error: { code: problem.code, message: problem.message }, requestId });
+      return;
+    }
+  }
+
   if (error instanceof ZodError) {
     const unsupportedPaymentMethod = error.issues.some(
       (issue) => issue.message === UNSUPPORTED_PAYMENT_METHOD_MESSAGE,
@@ -23,7 +59,13 @@ export const errorHandler: ErrorRequestHandler = (error, request, response, next
         message: unsupportedPaymentMethod
           ? UNSUPPORTED_PAYMENT_METHOD_MESSAGE
           : "The request could not be validated",
-        details: error.flatten(),
+        details: {
+          ...error.flatten(),
+          issues: error.issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message,
+          })),
+        },
       },
       requestId,
     });
@@ -51,7 +93,9 @@ export const errorHandler: ErrorRequestHandler = (error, request, response, next
       error: {
         code: error.code,
         message: error.statusCode >= 500 ? "An unexpected error occurred" : error.message,
-        ...(error.details === undefined ? {} : { details: error.details }),
+        ...(error.statusCode >= 500 || error.details === undefined
+          ? {}
+          : { details: error.details }),
       },
       requestId,
     });

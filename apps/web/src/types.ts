@@ -14,6 +14,7 @@ export interface TenantPrincipal {
 }
 
 export interface PlatformPrincipal {
+  emailVerified?: boolean;
   sessionId: string;
   userId: string;
   email: string;

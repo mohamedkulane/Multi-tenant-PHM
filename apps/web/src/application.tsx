@@ -10,6 +10,7 @@ import {
 } from "./lib/auth-navigation";
 import { navigate, usePathname } from "./lib/navigation";
 import { AcceptInvitationPage, PlatformLoginPage, TenantLoginPage } from "./pages/login-pages";
+import { PlatformRecoveryPage } from "./pages/platform-recovery-page";
 import {
   PlatformAuditPage,
   PlatformPlansPage,
@@ -294,6 +295,15 @@ function TenantApplication({ pathname }: { pathname: string }) {
 
 export function Application() {
   const pathname = usePathname();
+  if (
+    [
+      "/platform/forgot-password",
+      "/platform/request-verification",
+      "/platform/verify-email",
+      "/platform/reset-password",
+    ].includes(pathname)
+  )
+    return <PlatformRecoveryPage key={pathname} pathname={pathname} />;
   if (pathname === "/accept-invitation") return <AcceptInvitationPage />;
   if (pathname.startsWith("/platform")) return <PlatformApplication pathname={pathname} />;
   return <TenantApplication pathname={pathname} />;

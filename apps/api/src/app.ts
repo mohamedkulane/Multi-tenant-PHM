@@ -114,6 +114,8 @@ export function createApp(options: CreateAppOptions = {}) {
           "req.headers.authorization",
           "res.headers.set-cookie",
           "req.body.password",
+          "req.body.confirmPassword",
+          "req.body.token",
         ],
         censor: "[REDACTED]",
       },
