@@ -2,6 +2,7 @@ export const PAYMENT_METHOD_OPTIONS = [
   { value: "EVC_PLUS", label: "EVC-Plus" },
   { value: "E_DAHAB", label: "E-Dahab" },
   { value: "SALAAM_BANK", label: "Salaam Bank" },
+  { value: "MERCHANT", label: "Merchant" },
 ] as const;
 
 export type PaymentMethod = (typeof PAYMENT_METHOD_OPTIONS)[number]["value"];

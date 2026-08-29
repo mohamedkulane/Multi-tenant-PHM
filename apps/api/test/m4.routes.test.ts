@@ -159,7 +159,7 @@ describe("M4 API routes", () => {
       expect(response.status).toBe(400);
       expect(response.body.error).toMatchObject({
         code: "UNSUPPORTED_PAYMENT_METHOD",
-        message: "Unsupported payment method. Choose EVC-Plus, E-Dahab, or Salaam Bank.",
+        message: "Unsupported payment method. Choose EVC-Plus, E-Dahab, Salaam Bank, or Merchant.",
       });
       expect(addPayment).not.toHaveBeenCalled();
     },

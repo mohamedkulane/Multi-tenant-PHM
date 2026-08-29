@@ -9,6 +9,7 @@ enum PaymentMethod {
   EVC_PLUS
   E_DAHAB
   SALAAM_BANK
+  MERCHANT
   // Legacy values remain readable for truthful historical accounting records.
   CASH
   CARD

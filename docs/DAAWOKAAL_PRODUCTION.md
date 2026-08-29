@@ -15,8 +15,10 @@ This document contains no passwords, session secrets, private keys, or tokens.
 | VPS | `185.197.31.102` / `vps1.techrosolutions.com` |
 
 The API hostname uses a hyphen: **api-daawokaal**, not `api.daawokaal`.
-Frontend requests use the API domain with credentials. The permitted origin is
-exactly `https://daawokaal.techrosolutions.com`.
+The frontend build uses same-origin `/api/v1`; the frontend Nginx server proxies
+that path to the private API listener. The separate API hostname remains public
+for health checks and approved API clients. This same-origin route is required
+for platform and tenant login cookies to work from the production frontend.
 
 ## Deployed components
 
@@ -34,7 +36,8 @@ exactly `https://daawokaal.techrosolutions.com`.
   repository's development Compose file in production.
 - Database `phms_prod` has separate non-superuser `phms_app` and `phms_migrator`
   roles, neither with BYPASSRLS. All 35 migrations and 61 policies were present.
-- Nginx configuration: `/etc/nginx/sites-available/daawokaal`.
+- Nginx configuration: `/etc/nginx/sites-available/daawokaal`; both HTTPS server
+  blocks proxy `/api/` to `127.0.0.1:5001`.
 - Application environment: `/etc/phms/api.env`, root-owned and group-readable
   only by `phms`. Migration credentials: `/etc/phms/migration.env`, root-only.
   Never print or copy these into Git, chat, screenshots, or logs.

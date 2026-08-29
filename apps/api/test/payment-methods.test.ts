@@ -19,5 +19,6 @@ describe("canonical payment methods", () => {
     expect(formatPaymentMethod("EVC_PLUS")).toBe("EVC-Plus");
     expect(formatPaymentMethod("E_DAHAB")).toBe("E-Dahab");
     expect(formatPaymentMethod("SALAAM_BANK")).toBe("Salaam Bank");
+    expect(formatPaymentMethod("MERCHANT")).toBe("Merchant");
   });
 });

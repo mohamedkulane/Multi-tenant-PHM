@@ -7,6 +7,7 @@ describe("payment method UI configuration", () => {
       { value: "EVC_PLUS", label: "EVC-Plus" },
       { value: "E_DAHAB", label: "E-Dahab" },
       { value: "SALAAM_BANK", label: "Salaam Bank" },
+      { value: "MERCHANT", label: "Merchant" },
     ]);
   });
 
@@ -14,6 +15,7 @@ describe("payment method UI configuration", () => {
     expect(formatPaymentMethod("EVC_PLUS")).toBe("EVC-Plus");
     expect(formatPaymentMethod("E_DAHAB")).toBe("E-Dahab");
     expect(formatPaymentMethod("SALAAM_BANK")).toBe("Salaam Bank");
+    expect(formatPaymentMethod("MERCHANT")).toBe("Merchant");
   });
 
   it("falls back safely when a DOM value is unsupported", () => {

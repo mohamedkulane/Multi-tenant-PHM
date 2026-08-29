@@ -104,7 +104,7 @@ model TenantBranding {
   invoiceShowLogo           Boolean  @default(true) @map("invoice_show_logo")
   pharmacistDiscountPercent Decimal  @default(0) @map("pharmacist_discount_percent") @db.Decimal(5, 2)
   consultationFee            Decimal  @default(0) @map("consultation_fee") @db.Decimal(19, 4)
-  paymentMethods             Json     @default("[\"EVC_PLUS\",\"E_DAHAB\",\"SALAAM_BANK\"]") @map("payment_methods")
+  paymentMethods             Json     @default("[\"EVC_PLUS\",\"E_DAHAB\",\"SALAAM_BANK\",\"MERCHANT\"]") @map("payment_methods")
   updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("tenant_branding")
