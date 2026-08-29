@@ -21,8 +21,10 @@ exactly `https://daawokaal.techrosolutions.com`.
 ## Deployed components
 
 - Ubuntu 24.04 LTS; Node 24.20.0; Nginx; Docker Engine and Compose.
-- Application commit: `d6819f6b87a29beebb96a929b3a2ced7c9c76950` from `master`.
-- Release: `/srv/phms/releases/20260828-d6819f6`; active symlink: `/srv/phms/current`.
+- Application commit: `dff7b57a1b191b967a83ddbb91583510adac7096` from `master`.
+- Release: `/srv/phms/releases/20260829T073456Z-dff7b57`; active symlink:
+  `/srv/phms/current`. The previous release remains available for rollback at
+  `/srv/phms/releases/20260828-d6819f6`.
 - API runs as the unprivileged `phms` service user under `phms-api.service`.
 - Frontend is served from `/srv/phms/current/apps/web/dist` only.
 - API listens on `127.0.0.1:5001`; PostgreSQL 17.11 on `127.0.0.1:5433`;
@@ -68,6 +70,8 @@ Keep the VPSDime console available for recovery, and protect the local SSH key.
 - Platform super-administrator was created and verified active in the database.
 - Platform login was rendered in a real browser with no captured console errors.
   No user password was read or entered by the assistant.
+- Public HTTPS serves the `DaawoKaal` document title and `/favicon.jpg`; the
+  production favicon SHA-256 matches the reviewed repository asset.
 - A fresh PostgreSQL backup was restored into an isolated temporary database;
   the admin and 35 migrations were verified. The temporary database was removed.
 - A compressed PostgreSQL dump was uploaded to the private Backblaze B2 bucket,
