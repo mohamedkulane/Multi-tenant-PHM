@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily DaawoKaal off-server PostgreSQL backup
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 Africa/Mogadishu
+AccuracySec=1min
+Persistent=true
+Unit=daawokaal-backup.service
+
+[Install]
+WantedBy=timers.target

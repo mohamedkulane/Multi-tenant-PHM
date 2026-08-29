@@ -1,8 +1,8 @@
-# Production database only. Run with an explicit -f; do not merge with the dev compose.
+# Production PostgreSQL and reserved Redis. Use an explicit -f; never merge with dev compose.
 name: phms-production
 services:
   postgres:
-    image: postgres:17
+    image: postgres:17.11-bookworm
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -24,8 +24,27 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+  redis:
+    image: redis:7.4.11-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--bind", "0.0.0.0", "--protected-mode", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - phms_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 secrets:
   postgres_password:
     file: /etc/phms/postgres-password
 volumes:
   phms_production_data:
+  phms_redis_data:

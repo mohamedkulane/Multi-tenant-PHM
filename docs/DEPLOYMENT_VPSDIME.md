@@ -2,6 +2,10 @@
 
 Deployment runbook · reviewed against this repository on 27 August 2026.
 
+For the actual two-domain DaawoKaal deployment and verified operations, see
+[DaawoKaal production handoff](DAAWOKAAL_PRODUCTION.md). The examples below use
+a single domain; do not replace the deployed API hostname with those examples.
+
 This guide prepares a **new Ubuntu 24.04 LTS VPS**, not a shared-hosting account.
 It does not deploy anything automatically. Replace every `REPLACE_...` value
 before running commands. Commands below run in **Bash over SSH on the VPS**, not
@@ -15,14 +19,17 @@ during the pilot instead of assuming a plan can handle a fixed patient count.
 Browser → HTTPS Nginx :443
              ├─ /              React static build
              └─ /api/          Express on 127.0.0.1:5001
-                                    └─ PostgreSQL 17 on 127.0.0.1:5433
+                                    ├─ PostgreSQL 17 on 127.0.0.1:5433
+                                    └─ Redis 7 on 127.0.0.1:6379 (reserved for future cache/queues)
 ```
 
-- Use one public domain, for example `clinic.example.com`, for both web and API.
+- The examples use one public domain, `clinic.example.com`, for both web and API.
+  DaawoKaal instead uses the separate frontend/API domains recorded in its handoff.
 - Node runs under systemd as an unprivileged `phms` user. Nginx serves only
   `apps/web/dist`, never the repository root or `.env` files.
-- PostgreSQL runs in Docker with a persistent volume and separate migration and
-  runtime roles. VPSDime supports Docker on its Linux VPS offerings; published
+- PostgreSQL and Redis run in Docker with persistent volumes; PostgreSQL uses separate migration and
+  runtime roles. The current API does not consume Redis yet; it is provisioned on loopback only for
+  future cache/queue work and must not be treated as an active application dependency. VPSDime supports Docker on its Linux VPS offerings; published
   database ports should be loopback-only. [VPSDime Docker guidance](https://vpsdime.com/knowledgebase/technical-questions/docker-on-vps)
 - **Do not use the root `docker-compose.yml` in production.** It contains local
   development credentials and a publicly bound port. Use the separate
@@ -397,6 +404,15 @@ For an update:
 Before public launch, configure and test scheduled encrypted backups, off-server
 copying, failure alerts, disk monitoring and an actual restore drill. They are
 operational requirements, not services automatically installed by this document.
+
+The DaawoKaal production host now uses `/usr/local/bin/backup-daawokaal.sh` with
+`daawokaal-backup.timer` at 02:30 Africa/Mogadishu. It keeps three compressed local
+dumps under `/opt/backups/daawokaal`, copies them to the private
+`daawokaal-b2:daawokaal-backups/postgresql` target, and removes matching remote
+objects after 30 days. The installation acceptance test verified `pg_dump`, gzip,
+remote name/size, and a full restore into an isolated temporary database without
+changing production. Operational details and safe commands are recorded in
+`docs/DAAWOKAAL_PRODUCTION.md`.
 
 ## 11. Common problems
 
