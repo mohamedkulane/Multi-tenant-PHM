@@ -171,6 +171,7 @@ describe("tenant workspace routes", () => {
         displayName: "Route Health",
         primaryColor: "#174C3F",
         accentColor: "#B8F39A",
+        paymentMethods: ["EVC_PLUS", "E_DAHAB", "SALAAM_BANK", "MERCHANT"],
       });
 
     expect(response.status).toBe(200);

@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { AuthService } from "../auth/auth.types.js";
 import { requireAuthentication } from "../middleware/authentication.js";
 import { requirePermission } from "../middleware/authorization.js";
+import { PAYMENT_METHODS } from "../payments/payment-methods.js";
 import {
   tenantWorkspaceService,
   type TenantWorkspaceService,
@@ -67,10 +68,10 @@ export function createTenantRouter(
         pharmacistDiscountPercent: z.number().min(0).max(100).default(0),
         consultationFee: z.number().min(0).max(1000000).default(0),
         paymentMethods: z
-          .array(z.enum(["EVC_PLUS", "E_DAHAB", "SALAAM_BANK"]))
+          .array(z.enum(PAYMENT_METHODS))
           .min(1)
-          .max(3)
-          .default(["EVC_PLUS", "E_DAHAB", "SALAAM_BANK"]),
+          .max(PAYMENT_METHODS.length)
+          .default([...PAYMENT_METHODS]),
       })
       .parse(request.body);
     response.json({
@@ -97,10 +98,10 @@ export function createTenantRouter(
         pharmacistDiscountPercent: z.number().min(0).max(100).default(0),
         consultationFee: z.number().min(0).max(1000000).default(0),
         paymentMethods: z
-          .array(z.enum(["EVC_PLUS", "E_DAHAB", "SALAAM_BANK"]))
+          .array(z.enum(PAYMENT_METHODS))
           .min(1)
-          .max(3)
-          .default(["EVC_PLUS", "E_DAHAB", "SALAAM_BANK"]),
+          .max(PAYMENT_METHODS.length)
+          .default([...PAYMENT_METHODS]),
       })
       .parse(request.body);
     response.json({
