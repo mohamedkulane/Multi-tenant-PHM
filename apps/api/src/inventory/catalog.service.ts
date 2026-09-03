@@ -172,7 +172,6 @@ export class PrismaCatalogService implements CatalogService {
           },
           orderBy: { name: "asc" },
           select: productSelection,
-          take: 100,
         });
         return products.map(serializeProduct);
       },
