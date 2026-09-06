@@ -266,7 +266,6 @@ export class PrismaInventoryService implements InventoryService {
               },
             },
           },
-          take: 250,
         });
         return batches.map((batch) => ({
           ...batch,

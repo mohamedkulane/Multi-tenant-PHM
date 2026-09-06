@@ -303,4 +303,29 @@ describeDatabase("M3 live inventory workflows", () => {
       await app.end();
     }
   });
+
+  it("returns the complete branch stock snapshot when it contains more than 250 batches", async () => {
+    await adminTenant(tenantId, userId, membershipId, async (client) => {
+      await client.query(
+        `INSERT INTO public.inventory_batches
+          (id, tenant_id, branch_id, product_id, batch_number, expiry_date, unit_cost,
+           quantity_on_hand, updated_at)
+         SELECT gen_random_uuid(), $1, $2, $3,
+                'LIMIT-REGRESSION-' || lpad(series::text, 3, '0'),
+                '2040-01-01', 1, 1, now()
+         FROM generate_series(1, 251) AS series`,
+        [tenantId, branchA, productId],
+      );
+    });
+
+    const stock = (await inventoryService.listStock(principal, branchA)) as Array<{
+      batchNumber: string;
+    }>;
+    const regressionBatches = stock.filter(({ batchNumber }) =>
+      batchNumber.startsWith("LIMIT-REGRESSION-"),
+    );
+
+    expect(regressionBatches).toHaveLength(251);
+    expect(regressionBatches.at(-1)?.batchNumber).toBe("LIMIT-REGRESSION-251");
+  });
 });
