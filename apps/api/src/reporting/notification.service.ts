@@ -203,6 +203,9 @@ export class PrismaNotificationService implements NotificationService {
             AND d.remaining_amount > 0 AND d.due_date < CURRENT_DATE
             AND d.status <> 'VOIDED'
         `);
+        await transaction.$queryRaw(
+          Prisma.sql`SELECT set_config('app.notification_write', 'true', true)`,
+        );
         let created = 0;
         for (const alert of alerts) {
           const existing = await transaction.notification.findUnique({
