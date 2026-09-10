@@ -15,6 +15,7 @@ import { AppError } from "../errors/app-error.js";
 import { parseMoney, formatMoney } from "../finance/money.js";
 import { canAccessBranch } from "../middleware/authorization.js";
 import type { CanonicalPaymentMethod } from "../payments/payment-methods.js";
+import { collectLabVisitSamples, type SampleCollectionInput } from "./sample-collection.js";
 
 export interface PatientInput {
   name: string;
@@ -408,7 +409,7 @@ export class LabService {
           branchId: input.branchId,
           patientId: patient.id,
           visitNumber,
-          status: "RESULTS_PENDING",
+          status: "REGISTERED",
           clinicalNotes: text(input.clinicalNotes),
           subtotal: formatMoney(subtotal),
           discount: formatMoney(discount),
@@ -619,6 +620,24 @@ export class LabService {
     });
   }
 
+  async collectSample(
+    principal: AuthenticatedPrincipal,
+    visitId: string,
+    input: SampleCollectionInput,
+    requestId?: string,
+  ) {
+    return prisma.$transaction(async (transaction) => {
+      await setTransactionContext(transaction, principal);
+      await collectLabVisitSamples(transaction, principal, visitId, input, {
+        ...(requestId ? { requestId } : {}),
+      });
+      return transaction.labVisit.findUniqueOrThrow({
+        where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
+        include: visitInclude,
+      });
+    });
+  }
+
   async markResult(
     principal: AuthenticatedPrincipal,
     visitId: string,
@@ -656,7 +675,7 @@ export class LabService {
           code: "LAB_PAYMENT_REQUIRED",
           message: "Lab fee must be paid in full before results can be entered",
         });
-      if (visit.clinicVisitId && !target.sampleCollectedAt)
+      if (!target.sampleCollectedAt)
         throw new AppError({
           statusCode: 409,
           code: "LAB_SAMPLE_REQUIRED",

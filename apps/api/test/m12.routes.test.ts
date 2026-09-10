@@ -60,7 +60,12 @@ function services() {
     amountPaid: "10.0000",
     payments: [{ amount: "10.0000", method: "CASH" }],
   } as never);
-  return { customers, suppliers, laboratory, createVisit, addPayment };
+  const collectSample = vi.spyOn(laboratory, "collectSample").mockResolvedValue({
+    id: "visit-1",
+    status: "RESULTS_PENDING",
+    sampleStatus: "COLLECTED",
+  } as never);
+  return { customers, suppliers, laboratory, createVisit, addPayment, collectSample };
 }
 
 describe("M12 customer, supplier and laboratory routes", () => {
@@ -233,6 +238,39 @@ describe("M12 customer, supplier and laboratory routes", () => {
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("UNSUPPORTED_PAYMENT_METHOD");
     expect(domain.addPayment).not.toHaveBeenCalled();
+  });
+
+  it("collects samples for a standalone paid laboratory visit", async () => {
+    const domain = services();
+    const response = await request(createApp({ authentication, laboratory: domain.laboratory }))
+      .post(`/api/v1/lab/visits/${patientId}/sample`)
+      .set("Cookie", "phms_session=test")
+      .send({
+        samples: [
+          {
+            visitTestId: testId,
+            sampleCondition: "ACCEPTABLE",
+            sampleNotes: "EDTA tube received",
+          },
+        ],
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.sampleStatus).toBe("COLLECTED");
+    expect(domain.collectSample).toHaveBeenCalledWith(
+      principal,
+      patientId,
+      {
+        samples: [
+          {
+            visitTestId: testId,
+            sampleCondition: "ACCEPTABLE",
+            sampleNotes: "EDTA tube received",
+          },
+        ],
+      },
+      expect.any(String),
+    );
   });
 
   it("prevents reception staff from entering laboratory results", async () => {

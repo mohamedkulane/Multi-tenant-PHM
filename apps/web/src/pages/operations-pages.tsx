@@ -23,6 +23,7 @@ import {
   formatPaymentMethod,
   toPaymentMethod,
 } from "../lib/payment-methods";
+import { summarizeCustomerLedgerSale } from "../features/customers/customer-ledger";
 
 type Row = Record<string, unknown>;
 const text = (value: unknown) =>
@@ -55,6 +56,7 @@ export function CustomersPage({
     queryFn: () => getData<Row>(`/customers/${text(ledgerCustomer?.["id"])}`),
     enabled: Boolean(ledgerCustomer),
   });
+  const invoiceSummary = summarizeCustomerLedgerSale(invoiceSale ?? {});
   const save = useMutation({
     mutationFn: () =>
       editing?.["id"]
@@ -253,8 +255,39 @@ export function CustomersPage({
                 },
                 { label: "Date", render: (row) => date(row["createdAt"]) },
                 {
-                  label: "Total",
-                  render: (row) => money(row["grandTotal"], workspace.tenant.currencyCode),
+                  label: "Status",
+                  render: (row) => {
+                    const summary = summarizeCustomerLedgerSale(row);
+                    return <StatusBadge value={summary.statusLabel} />;
+                  },
+                },
+                {
+                  label: "Sale summary",
+                  render: (row) => {
+                    const summary = summarizeCustomerLedgerSale(row);
+                    return (
+                      <div className="min-w-36 space-y-1 text-xs">
+                        <p className="flex justify-between gap-3">
+                          <span className="text-slate-500">Original</span>
+                          <strong>
+                            {money(summary.originalTotal, workspace.tenant.currencyCode)}
+                          </strong>
+                        </p>
+                        {summary.returnedTotal > 0 ? (
+                          <p className="flex justify-between gap-3 text-amber-700">
+                            <span>Returned</span>
+                            <strong>
+                              −{money(summary.returnedTotal, workspace.tenant.currencyCode)}
+                            </strong>
+                          </p>
+                        ) : null}
+                        <p className="flex justify-between gap-3 border-t border-slate-200 pt-1">
+                          <span>Net total</span>
+                          <strong>{money(summary.netTotal, workspace.tenant.currencyCode)}</strong>
+                        </p>
+                      </div>
+                    );
+                  },
                 },
                 {
                   label: "Paid",
@@ -262,14 +295,30 @@ export function CustomersPage({
                 },
                 {
                   label: "Balance",
-                  render: (row) => (
-                    <strong className="text-rose-700">
-                      {money(row["remainingBalance"], workspace.tenant.currencyCode)}
-                    </strong>
-                  ),
+                  render: (row) => {
+                    const summary = summarizeCustomerLedgerSale(row);
+                    const color =
+                      summary.tone === "danger"
+                        ? "text-rose-700"
+                        : summary.tone === "success"
+                          ? "text-emerald-700"
+                          : summary.tone === "warning"
+                            ? "text-amber-700"
+                            : "text-slate-500";
+                    return (
+                      <div className={color}>
+                        <strong>
+                          {money(summary.remainingBalance, workspace.tenant.currencyCode)}
+                        </strong>
+                        <p className="mt-1 whitespace-nowrap text-xs font-semibold">
+                          {summary.balanceNote}
+                        </p>
+                      </div>
+                    );
+                  },
                 },
                 {
-                  label: "Invoice",
+                  label: "Actions",
                   render: (row) => (
                     <button className="btn-secondary" onClick={() => setInvoiceSale(row)}>
                       <Printer size={15} /> Print
@@ -327,12 +376,16 @@ export function CustomersPage({
                   </p>
                   <p
                     className={
-                      Number(invoiceSale["remainingBalance"]) > 0
+                      invoiceSummary.tone === "danger"
                         ? "font-black text-rose-700"
-                        : "font-black text-emerald-700"
+                        : invoiceSummary.tone === "success"
+                          ? "font-black text-emerald-700"
+                          : invoiceSummary.tone === "warning"
+                            ? "font-black text-amber-700"
+                            : "font-black text-slate-500"
                     }
                   >
-                    {Number(invoiceSale["remainingBalance"]) > 0 ? "PAYMENT DUE" : "PAID IN FULL"}
+                    {invoiceSummary.statusLabel.toUpperCase()}
                   </p>
                 </div>
               </div>
@@ -363,17 +416,41 @@ export function CustomersPage({
               </table>
               <div className="ml-auto max-w-sm space-y-2 text-sm">
                 <p className="flex justify-between">
-                  <span>Total</span>
-                  <strong>{money(invoiceSale["grandTotal"], workspace.tenant.currencyCode)}</strong>
+                  <span>Original total</span>
+                  <strong>
+                    {money(invoiceSummary.originalTotal, workspace.tenant.currencyCode)}
+                  </strong>
+                </p>
+                {invoiceSummary.returnedTotal > 0 ? (
+                  <p className="flex justify-between text-amber-700">
+                    <span>Returned</span>
+                    <strong>
+                      −{money(invoiceSummary.returnedTotal, workspace.tenant.currencyCode)}
+                    </strong>
+                  </p>
+                ) : null}
+                <p className="flex justify-between border-t border-slate-200 pt-2">
+                  <span>Net total</span>
+                  <strong>{money(invoiceSummary.netTotal, workspace.tenant.currencyCode)}</strong>
                 </p>
                 <p className="flex justify-between text-emerald-800">
                   <span>Paid</span>
                   <strong>{money(invoiceSale["amountPaid"], workspace.tenant.currencyCode)}</strong>
                 </p>
-                <p className="flex justify-between border-t pt-2 text-rose-700">
-                  <span>Balance</span>
+                <p
+                  className={`flex justify-between border-t pt-2 ${
+                    invoiceSummary.tone === "danger"
+                      ? "text-rose-700"
+                      : invoiceSummary.tone === "success"
+                        ? "text-emerald-700"
+                        : invoiceSummary.tone === "warning"
+                          ? "text-amber-700"
+                          : "text-slate-500"
+                  }`}
+                >
+                  <span>Balance · {invoiceSummary.balanceNote}</span>
                   <strong>
-                    {money(invoiceSale["remainingBalance"], workspace.tenant.currencyCode)}
+                    {money(invoiceSummary.remainingBalance, workspace.tenant.currencyCode)}
                   </strong>
                 </p>
               </div>
@@ -1084,27 +1161,23 @@ export function LabPage({
   });
   const collectSample = useMutation({
     mutationFn: () =>
-      sendData<Row>(
-        "post",
-        `/clinic/visits/${text(selectedVisit?.["clinicVisitId"])}/lab/${text(selectedVisit?.["id"])}/sample`,
-        {
-          samples: rows(selectedVisit?.["tests"]).map((test) => {
-            const testId = text(test["id"]);
-            const form = sampleForms[testId] ?? {
-              sampleCondition: "ACCEPTABLE",
-              rejectionReason: "",
-              sampleNotes: "",
-            };
-            return {
-              visitTestId: testId,
-              sampleCondition: form.sampleCondition,
-              rejectionReason:
-                form.sampleCondition === "ACCEPTABLE" ? undefined : form.rejectionReason,
-              sampleNotes: form.sampleNotes || undefined,
-            };
-          }),
-        },
-      ),
+      sendData<Row>("post", `/lab/visits/${text(selectedVisit?.["id"])}/sample`, {
+        samples: rows(selectedVisit?.["tests"]).map((test) => {
+          const testId = text(test["id"]);
+          const form = sampleForms[testId] ?? {
+            sampleCondition: "ACCEPTABLE",
+            rejectionReason: "",
+            sampleNotes: "",
+          };
+          return {
+            visitTestId: testId,
+            sampleCondition: form.sampleCondition,
+            rejectionReason:
+              form.sampleCondition === "ACCEPTABLE" ? undefined : form.rejectionReason,
+            sampleNotes: form.sampleNotes || undefined,
+          };
+        }),
+      }),
     onSuccess: async () => {
       setSelectedVisit((visit) =>
         visit
@@ -2194,7 +2267,7 @@ export function LabPage({
                   disabled={
                     collectSample.isPending ||
                     !canCollectSample ||
-                    !text(selectedVisit?.["clinicVisitId"]) ||
+                    visitTests.length === 0 ||
                     visitTests.some((test) => {
                       const form = sampleForms[text(test["id"])] ?? {
                         sampleCondition: "ACCEPTABLE",

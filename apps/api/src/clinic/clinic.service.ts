@@ -16,6 +16,7 @@ import { AppError } from "../errors/app-error.js";
 import { formatMoney, parseMoney } from "../finance/money.js";
 import { canAccessBranch } from "../middleware/authorization.js";
 import type { CanonicalPaymentMethod } from "../payments/payment-methods.js";
+import { collectLabVisitSamples, type SampleCollectionInput } from "../lab/sample-collection.js";
 
 export interface RegisterClinicVisitInput {
   branchId: string;
@@ -1016,105 +1017,19 @@ export class ClinicService {
     principal: AuthenticatedPrincipal,
     visitId: string,
     labVisitId: string,
-    input: {
-      samples: Array<{
-        visitTestId: string;
-        sampleCondition:
-          | "ACCEPTABLE"
-          | "HEMOLYZED"
-          | "CLOTTED"
-          | "INSUFFICIENT"
-          | "CONTAMINATED"
-          | "WRONG_CONTAINER"
-          | "LEAKING"
-          | "OTHER";
-        rejectionReason?: string | undefined;
-        sampleNotes?: string | undefined;
-      }>;
-    },
+    input: SampleCollectionInput,
     requestId?: string,
   ) {
     return prisma.$transaction(async (transaction) => {
       await setTransactionContext(transaction, principal);
-      const lab = await transaction.labVisit.findUnique({
-        where: { tenantId_id: { tenantId: principal.tenantId, id: labVisitId } },
-        include: { tests: true },
+      await collectLabVisitSamples(transaction, principal, labVisitId, input, {
+        expectedClinicVisitId: visitId,
+        ...(requestId ? { requestId } : {}),
       });
-      if (!lab || lab.clinicVisitId !== visitId || !canAccessBranch(principal, lab.branchId))
-        throw new AppError({
-          statusCode: 404,
-          code: "LAB_VISIT_NOT_FOUND",
-          message: "Lab order not found",
-        });
-      if (parseMoney(lab.amountPaid.toString()) < parseMoney(lab.total.toString()))
-        throw new AppError({
-          statusCode: 409,
-          code: "LAB_PAYMENT_REQUIRED",
-          message: "Lab fee must be paid in full before collecting the sample",
-        });
-      const uniqueSamples = new Map(input.samples.map((sample) => [sample.visitTestId, sample]));
-      if (
-        uniqueSamples.size !== lab.tests.length ||
-        lab.tests.some((test) => !uniqueSamples.has(test.id))
-      )
-        throw new AppError({
-          statusCode: 400,
-          code: "ALL_LAB_SAMPLES_REQUIRED",
-          message: "Record a sample or tube ID for every ordered laboratory test",
-        });
-      const hasRejected = input.samples.some((sample) => sample.sampleCondition !== "ACCEPTABLE");
-      await Promise.all(
-        lab.tests.map((test, index) => {
-          const sample = uniqueSamples.get(test.id)!;
-          const accepted = sample.sampleCondition === "ACCEPTABLE";
-          return transaction.labVisitTest.update({
-            where: { tenantId_id: { tenantId: principal.tenantId, id: test.id } },
-            data: {
-              sampleId: accepted
-                ? `SMP-${Date.now().toString(36).toUpperCase()}-${String(index + 1).padStart(2, "0")}`
-                : null,
-              sampleStatus: accepted ? "COLLECTED" : "RECOLLECTION_REQUIRED",
-              sampleCondition: sample.sampleCondition,
-              rejectionReason: accepted
-                ? null
-                : (clean(sample.rejectionReason) ?? "Sample rejected"),
-              sampleNotes: clean(sample.sampleNotes),
-              sampleCollectedAt: accepted ? new Date() : null,
-              sampleCollectedById: principal.membershipId,
-            },
-          });
-        }),
-      );
-      await transaction.labVisit.update({
-        where: { tenantId_id: { tenantId: principal.tenantId, id: labVisitId } },
-        data: {
-          sampleStatus: hasRejected ? "RECOLLECTION_REQUIRED" : "COLLECTED",
-          sampleCollectedAt: hasRejected ? null : new Date(),
-          sampleCollectedById: principal.membershipId,
-          sampleId: null,
-          sampleNotes: null,
-          status: hasRejected ? "REGISTERED" : "RESULTS_PENDING",
-        },
-      });
-      const updated = await transaction.clinicVisit.update({
+      return transaction.clinicVisit.findUniqueOrThrow({
         where: { tenantId_id: { tenantId: principal.tenantId, id: visitId } },
-        data: { status: hasRejected ? "WAITING_FOR_SAMPLE" : "LAB_IN_PROGRESS" },
         include: clinicVisitInclude,
       });
-      await transaction.auditLog.create({
-        data: {
-          tenantId: principal.tenantId,
-          branchId: lab.branchId,
-          actorUserId: principal.userId,
-          actorMembershipId: principal.membershipId,
-          ...(requestId ? { requestId } : {}),
-          action: hasRejected ? "LAB_SAMPLE_REJECTED" : "LAB_SAMPLE_COLLECTED",
-          entityType: "lab_visit",
-          entityId: labVisitId,
-          metadata: { sampleCount: uniqueSamples.size, recollectionRequired: hasRejected },
-        },
-      });
-      return updated;
     });
   }
 }

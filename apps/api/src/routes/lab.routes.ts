@@ -42,6 +42,28 @@ const labTestSchema = z.object({
     .max(100)
     .optional(),
 });
+const sampleCollectionSchema = z.object({
+  samples: z
+    .array(
+      z.object({
+        visitTestId: uuid,
+        sampleCondition: z.enum([
+          "ACCEPTABLE",
+          "HEMOLYZED",
+          "CLOTTED",
+          "INSUFFICIENT",
+          "CONTAMINATED",
+          "WRONG_CONTAINER",
+          "LEAKING",
+          "OTHER",
+        ]),
+        rejectionReason: optionalText(1000),
+        sampleNotes: optionalText(1000),
+      }),
+    )
+    .min(1)
+    .max(100),
+});
 
 export function createLabRouter(authentication: AuthService, service: LabService = labService) {
   const router = Router();
@@ -207,6 +229,22 @@ export function createLabRouter(authentication: AuthService, service: LabService
         res.locals.requestId as string | undefined,
       ),
     }),
+  );
+  router.post(
+    "/visits/:visitId/sample",
+    requirePermission("lab.sample.collect"),
+    async (req, res) =>
+      res.json({
+        data: presentClinicalData(
+          req.auth!,
+          await service.collectSample(
+            req.auth!,
+            uuid.parse(req.params.visitId),
+            sampleCollectionSchema.parse(req.body ?? {}),
+            res.locals.requestId as string | undefined,
+          ),
+        ),
+      }),
   );
   router.patch(
     "/visits/:visitId/tests/:visitTestId/result",
