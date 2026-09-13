@@ -4791,9 +4791,9 @@ function WorkspaceAccountPage({
   return (
     <>
       <PageHeader
-        eyebrow="Settings  /  Workspace settings"
+        eyebrow="Account"
         title="Workspace settings"
-        description="Manage your identity, subscription, organization settings, and smart branding."
+        description="Identity, subscription, organization settings, and tenant branding."
         actions={
           canManageBranding ? (
             <button className="btn-primary" onClick={() => setEdit(!edit)}>
@@ -4802,22 +4802,6 @@ function WorkspaceAccountPage({
           ) : undefined
         }
       />
-      <div className="relative mb-6 overflow-hidden rounded-2xl border border-blue-100 bg-blue-50 px-6 py-5 shadow-sm">
-        <div className="pointer-events-none absolute -top-10 right-8 size-28 rounded-full bg-blue-100/60 blur-2xl" />
-        <div className="relative flex items-center justify-between gap-6">
-          <div>
-            <p className="text-sm font-extrabold text-slate-900">A better workspace</p>
-            <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">
-              Keep your organization profile, subscription, and account security up to date.
-            </p>
-          </div>
-          <img
-            src="/favicon.jpg"
-            alt="Workspace illustration"
-            className="hidden h-16 w-28 shrink-0 rounded-xl object-cover object-center shadow-sm ring-1 ring-white/80 sm:block"
-          />
-        </div>
-      </div>
       {edit ? (
         <Card
           title="Organization and branding"
@@ -5006,8 +4990,8 @@ function WorkspaceAccountPage({
           </form>
         </Card>
       ) : null}
-      <div className="grid gap-5 md:grid-cols-2">
-        <Card title="Signed-in identity" className="overflow-hidden border-slate-200/80">
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card title="Signed-in identity">
           <dl className="grid grid-cols-2 gap-4 p-5 text-sm">
             <dt className="text-slate-500">Name</dt>
             <dd className="font-bold">{principal.fullName}</dd>
@@ -5023,7 +5007,7 @@ function WorkspaceAccountPage({
             </dd>
           </dl>
         </Card>
-        <Card title="Tenant subscription" className="overflow-hidden border-slate-200/80">
+        <Card title="Tenant subscription">
           <dl className="grid grid-cols-2 gap-4 p-5 text-sm">
             <dt className="text-slate-500">Organization</dt>
             <dd className="font-bold">{workspace.tenant.name}</dd>
