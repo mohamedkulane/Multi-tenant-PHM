@@ -76,13 +76,13 @@ export function StaffAccountPage({
     <>
       {!embedded ? (
         <PageHeader
-          eyebrow="Account"
-          title="My account"
-          description="Manage your personal information, password, and work access from one secure page."
+          eyebrow="Workspace account"
+          title="Manage your account"
+          description="Keep your personal information, password, and work access up to date."
         />
       ) : null}
-      <section className="mb-6 flex flex-col gap-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center">
-        <div className="grid size-20 shrink-0 place-items-center rounded-full bg-emerald-100 text-2xl font-extrabold text-emerald-800">
+      <section className="mb-6 flex flex-col gap-5 rounded-2xl border border-blue-100 bg-blue-50 p-5 shadow-sm sm:flex-row sm:items-center">
+        <div className="grid size-16 shrink-0 place-items-center rounded-2xl bg-emerald-100 text-2xl font-extrabold text-emerald-800 ring-4 ring-white/80">
           {initials}
         </div>
         <div className="min-w-0 flex-1">
@@ -97,9 +97,10 @@ export function StaffAccountPage({
       </section>
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
-          <Card
-            title="Personal information"
-            description="Update your contact details and account identity."
+        <Card
+          title="Personal information"
+          description="Update your contact details and account identity."
+          className="overflow-hidden border-slate-200/80"
           >
             <form
               className="space-y-4 p-5"
@@ -153,6 +154,7 @@ export function StaffAccountPage({
           <Card
             title="Work access"
             description="Role and assigned branches are managed by your administrator."
+            className="overflow-hidden border-slate-200/80"
           >
             <div className="space-y-5 p-5">
               <div>
@@ -190,7 +192,7 @@ export function StaffAccountPage({
         <Card
           title="Change password"
           description="Use a strong password that you do not reuse elsewhere."
-          className="h-fit"
+          className="h-fit overflow-hidden border-slate-200/80"
         >
           <form
             className="space-y-4 p-5"
