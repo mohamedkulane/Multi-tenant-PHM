@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import { navigate } from "../lib/navigation";
 import { MedicineBrowser, ProductCatalog, sellableUnits } from "../components/medicine-browser";
 import { DashboardMetrics } from "../components/dashboard-metrics";
+import { FinancialOverview } from "../components/financial-overview";
 import {
   Area,
   AreaChart,
@@ -355,6 +356,12 @@ export function DashboardPage({
       {query.data ? (
         <>
           <DashboardMetrics cards={cards} currency={workspace.tenant.currencyCode} />
+          {query.data["financial"] ? (
+            <FinancialOverview
+              financial={query.data["financial"] as Row}
+              currency={workspace.tenant.currencyCode}
+            />
+          ) : null}
           <div className="mt-6 grid gap-6 xl:grid-cols-2">
             <Card
               title="Socodka iibka (Sales trend)"

@@ -4,6 +4,7 @@ import { prisma } from "../database/prisma.js";
 import { withTenantContext } from "../database/tenant-context.js";
 import { AppError } from "../errors/app-error.js";
 import { canAccessBranch } from "../middleware/authorization.js";
+import { loadFinancialSummary } from "./financial-summary.js";
 
 export interface ReportRange {
   branchId: string;
@@ -249,7 +250,16 @@ export class PrismaReportService implements ReportService {
       const consultationRevenue = clinical?.consultationRevenue ?? "0";
       const labRevenue = clinical?.labRevenue ?? "0";
       const pharmacyRevenue = clinical?.pharmacyRevenue ?? "0";
+      const financial = await loadFinancialSummary(
+        transaction,
+        principal.tenantId,
+        range,
+        cards?.net_sales ?? "0",
+        cards?.expenses ?? "0",
+        cards?.receivables ?? "0",
+      );
       return {
+        financial,
         cards: {
           salesCount: cards?.sales_count ?? 0,
           grossSales: cards?.gross_sales ?? "0",

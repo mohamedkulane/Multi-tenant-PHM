@@ -199,6 +199,7 @@ describeDatabase("M5 live reporting and job workflows", () => {
   it("reports net sales, collections, debt, expenses, stock, and exact margin", async () => {
     const dashboard = (await reportService.dashboard(principal, range())) as {
       cards: Record<string, string | number>;
+      financial: Record<string, string | number>;
     };
     const margin = (await reportService.margin(principal, range())) as {
       totals: { netSales: string; costOfGoods: string; margin: string };
@@ -222,6 +223,13 @@ describeDatabase("M5 live reporting and job workflows", () => {
       netSales: "7.5000",
       costOfGoods: "3.000000",
       margin: "4.5000",
+    });
+    expect(dashboard.financial).toMatchObject({
+      totalRevenue: "7.5000",
+      grossProfit: "4.5000",
+      netIncome: "2.5000",
+      accountsReceivable: "2.5000",
+      missingCostItems: 0,
     });
     expect(inventory[0]!.quantityOnHand).toBe("97");
   });
